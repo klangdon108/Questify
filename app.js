@@ -4,7 +4,8 @@ function sfxXp(){
   playTone(880, 70, "sine", 0.03);
   playTone(1320, 55, "triangle", 0.02, 0.02);
 }
-function sfxCash(){
+// --- Arcade purchase SFX (kept as-is) ---
+function sfxPurchaseArcade(){
   // Bright "CHA-CHING!!" jingle (arcade reward style)
   if(!state.settings.sfxOn) return;
 
@@ -71,7 +72,12 @@ const DEFAULT_STATE = {
     goldPerLevel: 20,
     spPerLevel: 1,
     sfxOn: true,
-    musicOn: true},
+    musicOn: true,
+
+    // Theme + music can be mixed and matched
+    theme: "space",          // space | arcade | fall | spring | winter
+    musicTrack: "builtin"     // builtin or "mp3:Music/<Folder>/<file>.mp3"
+  },
   player: { level: 1, xp: 0, lifetimeXP: 0, lifetimeGold: 0, lifetimeSp: 0, gold: 0, skill: 0 },
   quests: { side: [], main: [] },
   rewards: [],
@@ -92,6 +98,12 @@ function normalizeState(s){
   if(typeof s.settings.musicOn !== "boolean") s.settings.musicOn = true;
   if(!Number.isFinite(s.settings.goldPerLevel)) s.settings.goldPerLevel = 20;
   if(!Number.isFinite(s.settings.spPerLevel)) s.settings.spPerLevel = 1;
+  const allowedThemes = new Set(["space","arcade","fall","spring","winter","summer"]);
+  if(typeof s.settings.theme !== "string" || !allowedThemes.has(s.settings.theme)) s.settings.theme = "space";
+
+  if(typeof s.settings.musicTrack !== "string") s.settings.musicTrack = "builtin";
+  // Back-compat: if old value is "space" or similar, map to builtin
+  if(s.settings.musicTrack === "space" || s.settings.musicTrack === "space-ambient") s.settings.musicTrack = "builtin";
   s.player = s.player || structuredClone(DEFAULT_STATE.player);
   if(!Number.isFinite(s.player.lifetimeGold)) s.player.lifetimeGold = 0;
   if(!Number.isFinite(s.player.lifetimeSp)) s.player.lifetimeSp = 0;
@@ -113,11 +125,277 @@ function ensureAudio(){
   return audioCtx;
 }
 
-// Small "pop" for any button click
-function sfxClick(){
-  // short, bright pop (gaming UI-style)
+/* ---------- Theme SFX ---------- */
+// Arcade click SFX (kept as-is)
+function sfxClickArcade(){
   playTone(520, 28, "square", 0.03);
   playTone(1040, 22, "triangle", 0.018);
+}
+
+function sfxClickSpace(){
+  // soft scanner blip
+  playTone(440, 34, "sine", 0.022);
+  setTimeout(() => playTone(880, 24, "triangle", 0.016), 16);
+}
+
+function sfxClickFall(){
+  // warm "wood" tap
+  playTone(220, 40, "triangle", 0.026);
+  setTimeout(() => playTone(330, 34, "sine", 0.018), 18);
+}
+
+function sfxClickSpring(){
+  // bright chirp
+  playTone(660, 28, "sine", 0.022);
+  setTimeout(() => playTone(990, 26, "triangle", 0.016), 14);
+}
+
+function sfxClickWinter(){
+  // icy tick
+  playTone(1200, 22, "triangle", 0.018);
+  setTimeout(() => playTone(1800, 18, "sine", 0.012), 10);
+}
+
+function sfxClickSummer(){
+  // upbeat pop
+  playTone(600, 26, "square", 0.024);
+  setTimeout(() => playTone(900, 22, "triangle", 0.016), 12);
+}
+
+function sfxPurchaseSpace(){
+  // confirm + sparkle
+  playTone(520, 90, "sine", 0.05);
+  setTimeout(() => playTone(780, 110, "triangle", 0.055), 70);
+  setTimeout(() => playTone(1040, 120, "triangle", 0.045), 140);
+}
+
+function sfxPurchaseFall(){
+  // cozy "coin" with soft chime
+  playTone(330, 90, "triangle", 0.06);
+  setTimeout(() => playTone(440, 80, "sine", 0.04), 55);
+  setTimeout(() => playTone(550, 90, "triangle", 0.05), 110);
+}
+
+function sfxPurchaseSpring(){
+  // bright sparkle purchase
+  playTone(880, 90, "triangle", 0.06);
+  setTimeout(() => playTone(1320, 80, "sine", 0.035), 70);
+}
+
+function sfxPurchaseWinter(){
+  // crystal clink
+  playTone(1400, 80, "sine", 0.045);
+  setTimeout(() => playTone(2100, 60, "triangle", 0.03), 55);
+  setTimeout(() => playTone(1750, 70, "triangle", 0.035), 110);
+}
+
+function sfxPurchaseSummer(){
+  // fun upbeat purchase jingle
+  playTone(660, 90, "square", 0.06);
+  setTimeout(() => playTone(990, 100, "square", 0.055), 70);
+  setTimeout(() => playTone(1320, 140, "triangle", 0.045), 140);
+}
+
+function sfxLevelUpArcade(){
+  // louder + longer trumpet-ish fanfare (original)
+  if(!state.settings.sfxOn) return;
+  const seq = [
+    {f:392, d:260, t:"sawtooth"},
+    {f:494, d:260, t:"sawtooth"},
+    {f:587, d:300, t:"sawtooth"},
+    {f:784, d:320, t:"sawtooth"},
+    {f:988, d:520, t:"sawtooth"},
+  ];
+  let at = 0;
+  seq.forEach(n => {
+    setTimeout(() => {
+      playTone(n.f, n.d, n.t, 0.085);
+      playTone(n.f * 2, Math.max(120, n.d-80), "triangle", 0.03);
+    }, at);
+    at += 210;
+  });
+}
+
+function sfxLevelUpSpace(){
+  // "warp" rise
+  if(!state.settings.sfxOn) return;
+  const seq = [220, 330, 440, 660, 880, 1100];
+  let at = 0;
+  seq.forEach((f, i) => {
+    setTimeout(() => {
+      playTone(f, 220, i < 3 ? "sine" : "sawtooth", 0.07);
+      playTone(f*2, 140, "triangle", 0.025);
+    }, at);
+    at += 160;
+  });
+}
+
+function sfxLevelUpFall(){
+  // warm cozy flourish
+  if(!state.settings.sfxOn) return;
+  const seq = [262, 330, 392, 523, 659];
+  let at = 0;
+  seq.forEach((f, i) => {
+    setTimeout(() => {
+      playTone(f, 240, i < 2 ? "triangle" : "sawtooth", 0.075);
+      playTone(f*2, 120, "triangle", 0.02);
+    }, at);
+    at += 180;
+  });
+}
+
+function sfxLevelUpSpring(){
+  // bright energetic flourish
+  if(!state.settings.sfxOn) return;
+  const seq = [392, 494, 659, 784, 988];
+  let at = 0;
+  seq.forEach((f, i) => {
+    setTimeout(() => {
+      playTone(f, 220, "sine", 0.07);
+      playTone(f*2, 120, "triangle", 0.025);
+    }, at);
+    at += 170;
+  });
+}
+
+function sfxLevelUpWinter(){
+  // icy crystal fanfare
+  if(!state.settings.sfxOn) return;
+  const seq = [523, 784, 1046, 1568, 2093];
+  let at = 0;
+  seq.forEach((f) => {
+    setTimeout(() => {
+      playTone(f, 240, "triangle", 0.055);
+      playTone(f*2, 90, "sine", 0.015);
+    }, at);
+    at += 180;
+  });
+}
+
+function sfxLevelUpSummer(){
+  // upbeat celebration
+  if(!state.settings.sfxOn) return;
+  const seq = [392, 523, 659, 784, 988, 1175];
+  let at = 0;
+  seq.forEach((f, i) => {
+    setTimeout(() => {
+      playTone(f, 200, i < 3 ? "square" : "triangle", 0.075);
+      playTone(f*2, 110, "triangle", 0.02);
+    }, at);
+    at += 150;
+  });
+}
+
+const THEME_SFX = {
+  space:  { click: sfxClickSpace,  purchase: sfxPurchaseSpace,  levelUp: sfxLevelUpSpace },
+  arcade: { click: sfxClickArcade, purchase: sfxPurchaseArcade, levelUp: sfxLevelUpArcade },
+  fall:   { click: sfxClickFall,   purchase: sfxPurchaseFall,   levelUp: sfxLevelUpFall },
+  spring: { click: sfxClickSpring, purchase: sfxPurchaseSpring, levelUp: sfxLevelUpSpring },
+  winter: { click: sfxClickWinter, purchase: sfxPurchaseWinter, levelUp: sfxLevelUpWinter },
+  summer: { click: sfxClickSummer, purchase: sfxPurchaseSummer, levelUp: sfxLevelUpSummer }
+};
+
+function currentThemeId(){
+  return (state?.settings?.theme || "space");
+}
+
+function sfxClick(){
+  const fn = THEME_SFX[currentThemeId()]?.click;
+  (fn || sfxClickArcade)();
+}
+
+function sfxPurchase(){
+  const fn = THEME_SFX[currentThemeId()]?.purchase;
+  (fn || sfxPurchaseArcade)();
+}
+
+function sfxLevelUp(){
+  const fn = THEME_SFX[currentThemeId()]?.levelUp;
+  (fn || sfxLevelUpArcade)();
+}
+
+/* ---------- Theme + music catalog ---------- */
+const THEMES = [
+  { id: "space",  label: "Space" },
+  { id: "arcade", label: "Arcade" },
+  { id: "fall",   label: "Fall" },
+  { id: "spring", label: "Spring" },
+  { id: "winter", label: "Winter" },
+  { id: "summer", label: "Summer" }
+];
+
+// Music is loaded from Music/index.json (generated by tools/build_music_index.js)
+// Users can still choose the built-in ambient if they haven't added MP3s yet.
+let musicCatalog = [
+  { id: "builtin", name: "Built-in: Space Ambient", type: "builtin" }
+];
+
+async function loadMusicCatalog(){
+  try{
+    const res = await fetch("Music/index.json", { cache: "no-store" });
+    if(!res.ok) throw new Error("no index");
+    const data = await res.json();
+    const tracks = Array.isArray(data?.tracks) ? data.tracks : [];
+
+    const mp3Items = tracks
+      .filter(t => t && typeof t.name === "string" && typeof t.file === "string")
+      .map(t => {
+        const file = t.file.startsWith("Music/") ? t.file : `Music/${t.file}`;
+        return {
+          id: `mp3:${file}`,
+          name: t.name,
+          type: "mp3",
+          src: encodeURI(file)
+        };
+      });
+
+    musicCatalog = [{ id: "builtin", name: "Built-in: Space Ambient", type: "builtin" }, ...mp3Items];
+  }catch{
+    // Leave the built-in option only
+    musicCatalog = [{ id: "builtin", name: "Built-in: Space Ambient", type: "builtin" }];
+  }
+}
+
+let bgAudio = null; // HTMLAudioElement for MP3 playback
+
+function ensureBgAudio(){
+  if(bgAudio) return bgAudio;
+  bgAudio = new Audio();
+  bgAudio.loop = true;
+  bgAudio.preload = "auto";
+  bgAudio.volume = 0.35;
+  return bgAudio;
+}
+
+function selectedMusicEntry(){
+  return musicCatalog.find(x => x.id === state.settings.musicTrack) || musicCatalog[0];
+}
+
+function startMusicIfNeeded(){
+  if(!state?.settings?.musicOn) return;
+  const entry = selectedMusicEntry();
+  if(!entry) return;
+  if(entry.type === "builtin"){
+    stopMp3();
+    startBgmIfNeeded();
+    syncAudioToggles();
+  }else{
+    stopBgm();
+    startMp3(entry.src);
+  }
+}
+
+function stopMp3(){
+  if(!bgAudio) return;
+  try{ bgAudio.pause(); }catch{}
+}
+
+function startMp3(src){
+  const a = ensureBgAudio();
+  if(a.src !== src) a.src = src;
+  if(!state?.settings?.musicOn) return;
+  // Autoplay restrictions: play will succeed only after a user gesture.
+  a.play().catch(()=>{});
 }
 
 /* ---------- Background music (procedural, looped) ---------- */
@@ -276,11 +554,18 @@ function startBgmIfNeeded(){
 }
 
 function syncAudioToggles(){
-  // If user turns SFX off, keep music obeying musicOn only.
-  // If musicOn off, fade out.
+  // Keep music obeying musicOn, for BOTH built-in and MP3.
+  const on = !!state?.settings?.musicOn;
+
+  // MP3 volume
+  if(bgAudio){
+    bgAudio.volume = on ? 0.35 : 0.0;
+    if(!on){ try{ bgAudio.pause(); }catch{} }
+  }
+
+  // Built-in procedural fade
   if(!bgm.master || !audioCtx) return;
   const ctx = audioCtx;
-  const on = !!state?.settings?.musicOn;
   const t = ctx.currentTime;
   const target = on ? 0.060 : 0.0001;
   bgm.master.gain.cancelScheduledValues(t);
@@ -320,7 +605,7 @@ function bindFirstInteractionAudio(){
   const kick = () => {
     try{
       ensureAudio();
-      startBgmIfNeeded();
+      startMusicIfNeeded();
       syncAudioToggles();
     }catch{ /* ignore */ }
     window.removeEventListener("pointerdown", kick);
@@ -359,8 +644,10 @@ function playTone(freq, durationMs, type="sine", gain=0.08){
   osc.stop(t0 + durationMs/1000 + 0.02);
 }
 function sfxComplete(){ playTone(420, 110, "sine", 0.08); setTimeout(() => playTone(680, 100, "triangle", 0.07), 50); }
-function sfxPurchase(){ playTone(880, 140, "triangle", 0.08); setTimeout(() => playTone(660, 120, "sine", 0.06), 70); }
-function sfxLevelUp(){
+
+// Legacy SFX kept for reference (do not call directly; themed routing happens near top of file)
+function sfxPurchaseLegacy(){ playTone(880, 140, "triangle", 0.08); setTimeout(() => playTone(660, 120, "sine", 0.06), 70); }
+function sfxLevelUpLegacy(){
   // louder + longer trumpet-ish fanfare
   if(!state.settings.sfxOn) return;
   const seq = [
@@ -561,7 +848,7 @@ function buyReward(rewardId){
   saveState();
   renderAll();
   // Cha-ching + quick "Purchased" pop
-  sfxCash();
+  sfxPurchase();
   showPurchasePop("PURCHASED");
   toast(`BOUGHT: ${r.title}`);
 }
@@ -761,10 +1048,10 @@ function deleteModalRecord(){
 }
 
 
-/* ---------- Theme (removed) ---------- */
+/* ---------- Theme ---------- */
 function applyTheme(){
-  // Themes removed: keep base styling only.
-  document.body.removeAttribute("data-theme");
+  const t = state?.settings?.theme || "space";
+  document.body.setAttribute("data-theme", t);
 }
 
 /* ---------- Confirm reset ---------- */
@@ -1091,22 +1378,31 @@ function wireEvents(){
       toast(state.settings.musicOn ? "MUSIC ON" : "MUSIC OFF");
       ensureAudio();
       if(state.settings.musicOn){
-        startBgmIfNeeded();
+        startMusicIfNeeded();
       }
       syncAudioToggles();
     });
   }
 
-  const deleteAllBtn = document.getElementById("deleteAllData");
-  if(deleteAllBtn){
-    deleteAllBtn.addEventListener("click", () => {
-      openConfirmReset();
+  const themeSelect = document.getElementById("themeSelect");
+  if(themeSelect){
+    themeSelect.addEventListener("change", () => {
+      state.settings.theme = themeSelect.value;
+      saveState();
+      applyTheme();
     });
   }
-  document.getElementById("resetBadges").addEventListener("click", () => {
-    state.completionLog = [];
-    saveState(); renderAll(); toast("TROPHIES RESET");
-  });
+
+  const musicSelect = document.getElementById("musicSelect");
+  if(musicSelect){
+    musicSelect.addEventListener("change", () => {
+      state.settings.musicTrack = musicSelect.value;
+      saveState();
+      startMusicIfNeeded();
+      renderSettings();
+    });
+  }
+
 
   window.addEventListener("keydown", (e) => {
     if(e.key === "Escape" && modalEl().classList.contains("show")) closeModal();
@@ -1132,7 +1428,8 @@ function wireEvents(){
 
       // Hard wipe + fresh defaults
       wipeAllUserData();
-      stopBgm(); // ensure BGM doesn't keep running after wipe
+      stopBgm();
+      stopMp3();
 
       closeConfirmReset();
       // Full reload ensures a truly clean slate (no lingering in-memory state).
@@ -1150,9 +1447,43 @@ function renderSettings(){
   document.getElementById("toggleSfx").textContent = state.settings.sfxOn ? "ON" : "OFF";
   const tm = document.getElementById("toggleMusic");
   if(tm) tm.textContent = state.settings.musicOn ? "ON" : "OFF";
+
+  // Theme select
+  const themeSelect = document.getElementById("themeSelect");
+  if(themeSelect){
+    if(themeSelect.options.length !== THEMES.length){
+      themeSelect.innerHTML = "";
+      THEMES.forEach(t => {
+        const opt = document.createElement("option");
+        opt.value = t.id;
+        opt.textContent = t.label.toUpperCase();
+        themeSelect.appendChild(opt);
+      });
+    }
+    themeSelect.value = state.settings.theme;
+  }
+
+  // Music select
+  const musicSelect = document.getElementById("musicSelect");
+  if(musicSelect){
+    musicSelect.innerHTML = "";
+    musicCatalog.forEach(m => {
+      const opt = document.createElement("option");
+      opt.value = m.id;
+      opt.textContent = m.name.toUpperCase();
+      musicSelect.appendChild(opt);
+    });
+    if(!musicCatalog.some(m => m.id === state.settings.musicTrack)){
+      state.settings.musicTrack = musicCatalog[0]?.id || "builtin";
+      saveState();
+    }
+    musicSelect.value = state.settings.musicTrack;
+  }
+
   syncAudioToggles();
 }
 function renderAll(){
+  applyTheme();
   renderHeader();
   renderQuestList("side");
   renderQuestList("main");
@@ -1206,11 +1537,12 @@ function escapeHtml(s){
 }
 
 /* ---------- Boot ---------- */
-function boot(){
+async function boot(){
   initModal();
   saveState(); // ensure key exists
   wireTabs();
   wireEvents();
+  await loadMusicCatalog();
   bindFirstInteractionAudio();
   bindGlobalClickSfx();
   renderAll();

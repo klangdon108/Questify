@@ -12,7 +12,7 @@
   <!-- Gamer/HUD font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800;900&family=Rajdhani:wght@500;600;700&family=Press+Start+2P&family=Nunito:wght@600;700;800&family=Merriweather+Sans:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -95,7 +95,6 @@
     <section class="view" id="view-achievements">
       <div class="viewHeader">
         <h2>Achievements</h2>
-        <button class="btn danger btnGhost" id="resetBadges">Reset Badges</button>
       </div>
       <div class="hintLine">Side quests upgrade into TROPHIES every 10 completions. Main quests award a PLATINUM trophy when completed.</div>
 
@@ -110,12 +109,6 @@
       <div class="viewHeader">
         <h2>Settings</h2>
       </div>
-
-      <div class="card">
-        <button class="btn danger" id="deleteAllData">Delete ALL local data</button>
-        <p class="hint">Wipes quests, rewards, progress, and achievements from this device so you can start over.</p>
-      </div>
-
       <div class="card">
         <div class="row">
           <span>XP per level</span>
@@ -143,9 +136,22 @@
 
       <div class="card">
         <div class="row">
+          <span>Theme</span>
+          <select id="themeSelect"></select>
+        </div>
+        <p class="hint">Themes change the whole look instantly (colors, fonts, and UI shape). Music is separate so you can mix and match.</p>
+      </div>
+
+      <div class="card">
+        <div class="row">
           <span>Background music</span>
           <button class="btn btnGhost" id="toggleMusic">On</button>
         </div>
+        <div class="row">
+          <span>Music track</span>
+          <select id="musicSelect"></select>
+        </div>
+        <p class="hint">Music names come from folder names inside <b>Music/</b>. Put an mp3 in each folder and rebuild <b>Music/index.json</b>.</p>
       </div>
     </section>
   <div id="purchasePop" class="purchasePop" aria-hidden="true"><div class="chip"><div class="icon">✓</div><div id="purchasePopText">PURCHASED</div></div></div>
