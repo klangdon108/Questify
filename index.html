@@ -8,201 +8,268 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#081027">
-  <!-- Gamer/HUD font -->
+  <meta name="theme-color" content="#030712">
+  
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800;900&family=Rajdhani:wght@500;600;700&family=Press+Start+2P&family=Nunito:wght@600;700;800&family=Merriweather+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Nunito:wght@800;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="top">
-    <div class="brand">
-      <div class="title">Questify</div>
+  <!-- High-Tech Blueprint Matrix Canvas Layer -->
+  <div class="blueprint-matrix">
+    <div class="grid-overlay"></div>
+    <div class="horizontal-scanlines"></div>
+    <div class="digital-nodes"></div>
+  </div>
+
+  <!-- Centered Level Character Progress Header Banner -->
+  <header class="top-centered" id="hud-header">
+    <div class="brand-centered">
+      <div class="title animate-text-glow">Questify</div>
       <div class="sub" id="levelLine">Level 1 • 0/100 XP</div>
     </div>
-
-    <div class="stats">
-      <div class="pill"><span class="pillLabel">Gold</span><span class="pillVal" id="gold">0</span></div>
-      <div class="pill"><span class="pillLabel">SP</span><span class="pillVal" id="skill">0</span></div>
-    </div>
-  </header>
-
-  <section class="card hud">
-    <div class="barWrap" aria-label="XP progress">
+    
+    <div class="barWrap character-xp-bar" aria-label="XP progress">
       <div class="barFill" id="xpFill" style="width:0%"></div>
       <div class="barShine"></div>
       <div class="barText" id="xpPct">0%</div>
     </div>
-    <div class="hudRow hudRow3">
-      <div class="hudStat">
-        <div class="hudLabel">Lifetime XP</div>
-        <div class="hudValue" id="lifetimeXp">0</div>
-      </div>
-      <div class="hudStat">
-        <div class="hudLabel">Lifetime Gold</div>
-        <div class="hudValue" id="lifetimeGold">0</div>
-      </div>
-      <div class="hudStat">
-        <div class="hudLabel">Lifetime SP</div>
-        <div class="hudValue" id="lifetimeSp">0</div>
+  </header>
+
+  <!-- Expanded Multi-Currency Resource Panel -->
+  <section class="resource-hud" id="hud-resources">
+    <div class="res-node gold-node">
+      <span class="res-icon">🪙</span>
+      <div class="res-meta">
+        <span class="res-val" id="gold">0</span>
+        <span class="res-label">GOLD RESERVES</span>
       </div>
     </div>
-    <div class="hudRow">
-      <div class="hudStat">
-        <div class="hudLabel">Today</div>
-        <div class="hudValue" id="todayXp">0 XP</div>
+    <div class="res-node sp-node">
+      <span class="res-icon">✨</span>
+      <div class="res-meta">
+        <span class="res-val" id="skill">0</span>
+        <span class="res-label">SKILL MATRIX</span>
+      </div>
+    </div>
+    <div class="res-node hp-node">
+      <span class="res-icon">🍏</span>
+      <div class="res-meta">
+        <span class="res-val" id="tokenHp">0</span>
+        <span class="res-label">VITALS (HP)</span>
+      </div>
+    </div>
+    <div class="res-node mp-node">
+      <span class="res-icon">💵</span>
+      <div class="res-meta">
+        <span class="res-val" id="tokenMp">0</span>
+        <span class="res-label">CREDIT (MP)</span>
+      </div>
+    </div>
+    <div class="res-node hc-node">
+      <span class="res-icon">🍯</span>
+      <div class="res-meta">
+        <span class="res-val" id="tokenHc">0</span>
+        <span class="res-label">HONEYCOMB LINK</span>
       </div>
     </div>
   </section>
 
-  <nav class="tabs" aria-label="Navigation tabs">
-    <button class="tab active" data-view="today">Today</button>
-    <button class="tab" data-view="main">Main</button>
-    <button class="tab" data-view="rewards">Rewards</button>
-    <button class="tab" data-view="achievements">Achievements</button>
-    <button class="tab" data-view="settings">Settings</button>
+  <!-- Core RPG Stat Progress Sheet Matrix Container -->
+  <section class="card hud complex-glow" id="hud-matrix">
+    <div class="barLabel">Core Attributes Telemetry</div>
+    
+    <div class="category-metrics-grid">
+      <div class="cat-progress-block">
+        <div class="cat-header"><span>🍏 Health Node</span> <span id="txtHealthLvl" class="cat-lvl-badge">Rank 1</span></div>
+        <div class="mini-barWrap"><div class="barFill cat-health-fill" id="fillHealth" style="width:0%"></div></div>
+      </div>
+      <div class="cat-progress-block">
+        <div class="cat-header"><span>💵 Treasury Node</span> <span id="txtFinancialLvl" class="cat-lvl-badge">Rank 1</span></div>
+        <div class="mini-barWrap"><div class="barFill cat-financial-fill" id="fillFinancial" style="width:0%"></div></div>
+      </div>
+      <div class="cat-progress-block">
+        <div class="cat-header"><span>🍯 Honeydew Matrix</span> <span id="txtHoneydewLvl" class="cat-lvl-badge">Rank 1</span></div>
+        <div class="mini-barWrap"><div class="barFill cat-honeydew-fill" id="fillHoneydew" style="width:0%"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <nav class="tabs" aria-label="Navigation tabs" id="hud-tabs">
+    <button class="tab active" data-view="quests" id="tab-quests">Quests Matrix</button>
+    <button class="tab" data-view="rewards" id="tab-rewards">Store Vault</button>
+    <button class="tab" data-view="settings" id="tab-settings">System Configuration</button>
   </nav>
 
   <main class="views">
-    <section class="view active" id="view-today">
+    <section class="view active" id="view-quests">
       <div class="viewHeader">
         <h2>Side Quests</h2>
-        <button class="btn btnGhost" data-action="openCreate" data-kind="side">+ Add</button>
+        <button class="btn btnGhost" data-action="openCreate" data-kind="side">+ Map Side Quest</button>
       </div>
-      <div class="hintLine">Tap COMPLETE to earn XP. Button turns GREEN on completion. When maxed, it shows a timer to MIDNIGHT.</div>
+      <div class="hintLine">Iterative routines routing optimization values to dedicated attribute arrays.</div>
       <div id="sideList" class="list"></div>
-    </section>
 
-    <section class="view" id="view-main">
-      <div class="viewHeader">
+      <div class="section-divider"></div>
+
+      <div class="viewHeader" style="margin-top: 10px;">
         <h2>Main Quests</h2>
-        <button class="btn btnGhost" data-action="openCreate" data-kind="main">+ Add</button>
+        <button class="btn btnGhost" data-action="openCreate" data-kind="main">+ Map Main Milestone</button>
       </div>
-      <div class="hintLine">Main quests are one-time objectives. Completing one grants a PLATINUM trophy and stores a completion date.</div>
+      <div class="hintLine">One-time major project benchmarks and foundational epic protocols.</div>
       <div id="mainList" class="list"></div>
     </section>
 
     <section class="view" id="view-rewards">
       <div class="viewHeader">
-        <h2>Rewards</h2>
-        <button class="btn btnGhost" data-action="openCreate" data-kind="reward">+ Add</button>
+        <h2>Rewards Store</h2>
+        <button class="btn btnGhost" data-action="openCreate" data-kind="reward">+ Provisions Mapping</button>
       </div>
-      <div class="hintLine">Buy buttons enable only when you can afford the cost.</div>
+      <div class="hintLine">Deallocate hard-earned currency, Matrix Points, or Honeycombs to unlock priority clearances.</div>
       <div id="rewardList" class="list"></div>
-    </section>
-
-    <section class="view" id="view-achievements">
-      <div class="viewHeader">
-        <h2>Achievements</h2>
-      </div>
-      <div class="hintLine">Side quests upgrade into TROPHIES every 10 completions. Main quests award a PLATINUM trophy when completed.</div>
-
-      <div class="achSectionTitle">Side Quest Trophies</div>
-      <div id="badgeList" class="list"></div>
-
-      <div class="achSectionTitle">Main Quest Trophies</div>
-      <div id="mainBadgeList" class="list"></div>
     </section>
 
     <section class="view" id="view-settings">
       <div class="viewHeader">
-        <h2>Settings</h2>
+        <h2>System Configuration</h2>
       </div>
-      <div class="card">
-        <div class="row">
-          <span>XP per level</span>
-          <input id="xpPerLevel" type="number" disabled />
+      <div class="card settingsBox complex-glow">
+        <h3>Level Scaling Telemetry</h3>
+        <div class="field">
+          <label for="setXpPerLevel">Base XP Threshold per Level Increase</label>
+          <input id="setXpPerLevel" type="number" inputmode="numeric" min="10" max="99999" />
         </div>
-        <div class="row">
-          <span>Gold per level</span>
-          <input id="goldPerLevel" type="text" inputmode="numeric" pattern="[0-9]*" />
+        <div class="field">
+          <label for="setGoldPerLevel">System Bonus Gold Payout</label>
+          <input id="setGoldPerLevel" type="number" inputmode="numeric" min="0" max="9999" />
         </div>
-        <div class="row">
-          <span>Skill points per level</span>
-          <input id="spPerLevel" type="text" inputmode="numeric" pattern="[0-9]*" />
+        <div class="field">
+          <label for="setSpPerLevel">System Bonus SP Payout</label>
+          <input id="setSpPerLevel" type="number" inputmode="numeric" min="0" max="99" />
         </div>
-        <button class="btn" id="saveSettings">Save</button>
-        <p class="hint">XP required increases by 10% each level. Level-up grants Gold + SP.</p>
-      </div>
 
-      <div class="card">
-        <div class="row">
-          <span>Sound effects</span>
-          <button class="btn btnGhost" id="toggleSfx">On</button>
-        </div>
-        <p class="hint">If iPhone is in silent mode, audio may not play.</p>
-      </div>
-
-      <div class="card">
-        <div class="row">
-          <span>Theme</span>
-          <select id="themeSelect"></select>
-        </div>
-        <p class="hint">Themes change the whole look instantly (colors, fonts, and UI shape). Music is separate so you can mix and match.</p>
-      </div>
-
-      <div class="card">
-        <div class="row">
-          <span>Background music</span>
-          <button class="btn btnGhost" id="toggleMusic">On</button>
-        </div>
-        <div class="row">
-          <span>Music track</span>
-          <select id="musicSelect"></select>
-        </div>
-        <p class="hint">Music names come from folder names inside <b>Music/</b>. Put an mp3 in each folder and rebuild <b>Music/index.json</b>.</p>
+        <h3 style="margin-top:32px; color:#ef4444;">Emergency Overrides</h3>
+        <button class="btn" id="btnDangerWipe" style="background: linear-gradient(135deg, #ef4444, #b91c1c); border:none; width:100%">Purge Global Database & Cache</button>
       </div>
     </section>
-  <div id="purchasePop" class="purchasePop" aria-hidden="true"><div class="chip"><div class="icon">✓</div><div id="purchasePopText">PURCHASED</div></div></div>
-</main>
+  </main>
 
-  <!-- Modal -->
-  <div class="modal" id="modal" aria-hidden="true">
-    <div class="modalScrim" data-action="closeModal"></div>
-    <div class="modalPanel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div id="modalOverlay" class="modalOverlay" aria-hidden="true" style="display:none;">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <div class="modalTop">
-        <div class="modalTitle" id="modalTitle">Edit</div>
-        <button class="iconBtn" data-action="closeModal" aria-label="Close">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        </button>
+        <div class="modalTitle" id="modalTitle">MANAGE SYSTEM PARAMETER</div>
+        <button class="iconBtn" id="modalClose" aria-label="Close">✕</button>
       </div>
+      <div class="modalBody">
+        <div class="field">
+          <label for="inputLabel">Objective Designation / Metadata Label</label>
+          <input id="inputLabel" type="text" placeholder="e.g. Complete architecture layout documentation" autocomplete="off" />
+        </div>
 
-      <div class="modalBody" id="modalBody"></div>
+        <div class="field" id="fieldCategorySelect">
+          <label for="selectCategory">Attribute Classification Array Target</label>
+          <select id="selectCategory">
+            <option value="Health">Health Node Array 🍏</option>
+            <option value="Financial">Treasury Node Array 💵</option>
+            <option value="Honeydew">Honeydew Matrix Configuration 🍯</option>
+          </select>
+        </div>
 
-      <div class="modalActions">
-        <button class="btn btnGhost danger" id="modalDelete" style="display:none">Delete</button>
-        <div class="spacer"></div>
-        <button class="btn btnGhost" data-action="closeModal">Cancel</button>
-        <button class="btn" id="modalSave">Save</button>
+        <div class="row row-responsive" id="rowSideConfig" style="display:none;">
+          <div class="field style-flex-1">
+            <label for="selectFrequency">Iterative Scan Interval</label>
+            <select id="selectFrequency">
+              <option value="Daily">Daily Sync</option>
+              <option value="Weekly">Weekly Sync</option>
+              <option value="Monthly">Monthly Sync</option>
+            </select>
+          </div>
+          <div class="field style-width-120">
+            <label for="inputMaxCompletions">Max Iterations Limit</label>
+            <input id="inputMaxCompletions" type="number" inputmode="numeric" min="1" max="99" value="1" />
+          </div>
+        </div>
+
+        <div class="row row-responsive" id="rowQuestPayouts" style="gap:8px;">
+          <div class="field style-flex-1">
+            <label for="inputQuestXp">XP Allocation</label>
+            <input id="inputQuestXp" type="number" inputmode="numeric" min="0" value="20" />
+          </div>
+          <div class="field style-flex-1">
+            <label for="inputQuestGold">Gold Allocation</label>
+            <input id="inputQuestGold" type="number" inputmode="numeric" min="0" value="5" />
+          </div>
+          <div class="field style-flex-1">
+            <label for="inputQuestSp">SP Allocation</label>
+            <input id="inputQuestSp" type="number" inputmode="numeric" min="0" value="0" />
+          </div>
+        </div>
+
+        <div id="rowRewardConfig" style="display:none; flex-direction:column;">
+          <div class="row row-responsive" style="gap:8px;">
+            <div class="field style-flex-1">
+              <label for="inputGoldCost">Gold Resource Required</label>
+              <input id="inputGoldCost" type="number" inputmode="numeric" min="0" value="10" />
+            </div>
+            <div class="field style-flex-1">
+              <label for="inputSpCost">SP Resource Required</label>
+              <input id="inputSpCost" type="number" inputmode="numeric" min="0" value="0" />
+            </div>
+          </div>
+          <div class="row row-responsive" style="gap:8px; margin-top:4px;">
+            <div class="field style-flex-1">
+              <label for="inputHpCost">🍏 HP Tokens</label>
+              <input id="inputHpCost" type="number" inputmode="numeric" min="0" value="0" />
+            </div>
+            <div class="field style-flex-1">
+              <label for="inputMpCost">💵 MP Tokens</label>
+              <input id="inputMpCost" type="number" inputmode="numeric" min="0" value="0" />
+            </div>
+            <div class="field style-flex-1">
+              <label for="inputHcCost">🍯 Honeycomb Nodes</label>
+              <input id="inputHcCost" type="number" inputmode="numeric" min="0" value="0" />
+            </div>
+          </div>
+        </div>
+
+        <div class="row actionRow" style="gap:10px; margin-top:20px">
+          <button class="btn btnGhost" id="modalDelete" style="border-color:#ef4444; color:#ef4444; display:none;">Deallocate</button>
+          <button class="btn" id="modalSave" style="background: linear-gradient(135deg, #0055ff, #002288); border:1px solid #38bdf8; flex:1;">Commit Configuration</button>
+        </div>
       </div>
-      <div class="modalHint" id="modalHint"></div>
     </div>
   </div>
 
-  <div id="celebration" class="celebration" aria-hidden="true"><div class="celebrateInner"><div class="celebrateTitle">LEVEL UP</div><div class="celebrateSub">NEW POWER UNLOCKED</div><div class="celebrateRays" aria-hidden="true"></div><div class="celebrateParticles" id="celebrateParticles" aria-hidden="true"></div></div></div>
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div id="confirmOverlay" class="modalOverlay" aria-hidden="true" style="display:none;">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="modalTop">
+        <div class="modalTitle" id="confirmTitle">CRITICAL DATABASE WIPE PROTOCOL</div>
+        <button class="iconBtn" id="confirmClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modalBody">
+        <p style="margin-top:0; color:#f87171; font-size:0.95rem;">WARNING: This operation executes an irreversible truncation of all progress loops, user matrices, mapped files, and telemetry stacks.</p>
+        <div class="field">
+          <label for="confirmInput">Input <b>CONFIRM</b> terminal key to verify access:</label>
+          <input id="confirmInput" type="text" autocomplete="off" style="text-transform:uppercase" placeholder="CONFIRM" />
+        </div>
+        <div class="row row-responsive" style="gap:12px; margin-top:24px;">
+          <button class="btn btnGhost" id="confirmCancel" style="flex:1">Abort</button>
+          <button class="btn" id="confirmExecute" style="background: linear-gradient(135deg, #ef4444, #dc2626); border:none; flex:1" disabled>Execute Terminal Truncation (10s)</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
+  <div id="celebration" class="celebration" aria-hidden="true">
+    <div class="celebrateInner">
+      <div class="celebrateTitle animate-text-glow" id="txtCelebrationTitle">MATRIX EVOLUTION LEVEL DEPLOYED</div>
+      <div class="celebrateSub" id="txtCelebrationSub">CORE SYSTEM CAPACITY UPGRADED</div>
+      <div class="celebrateParticles" id="celebrateParticles" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>
-
-<div id="confirmOverlay" class="modalOverlay" aria-hidden="true" style="display:none;">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
-    <div class="modalTop">
-      <div class="modalTitle" id="confirmTitle">CONFIRM RESET</div>
-      <button class="iconBtn" id="confirmClose" aria-label="Close">✕</button>
-    </div>
-    <div class="modalBody">
-      <p class="hint" style="margin-top:0">This will erase ALL Questify data on this device. Type <b>CONFIRM</b> to continue.</p>
-      <div class="field">
-        <label for="confirmInput">Type CONFIRM</label>
-        <input id="confirmInput" type="text" autocomplete="off" autocapitalize="characters" />
-      </div>
-      <div class="row" style="gap:10px">
-        <button class="btn" id="confirmCancel">Cancel</button>
-        <button class="btn danger" id="confirmDoReset" disabled>RESET</button>
-      </div>
-    </div>
-  </div>
-</div>
 </body>
 </html>

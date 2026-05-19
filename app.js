@@ -1,1551 +1,764 @@
-
-function sfxXp(){
-  // tiny sparkle
-  playTone(880, 70, "sine", 0.03);
-  playTone(1320, 55, "triangle", 0.02, 0.02);
-}
-// --- Arcade purchase SFX (kept as-is) ---
-function sfxPurchaseArcade(){
-  // Bright "CHA-CHING!!" jingle (arcade reward style)
-  if(!state.settings.sfxOn) return;
-
-  const notes = [
-    { f: 880,  d: 120, type: "square",   g: 0.09 },
-    { f: 1175, d: 140, type: "square",   g: 0.085 },
-    { f: 1568, d: 220, type: "triangle", g: 0.08 }
-  ];
-
-  let delay = 0;
-  notes.forEach(n => {
-    setTimeout(() => {
-      playTone(n.f, n.d, n.type, n.g);
-      // sparkle octave layer
-      playTone(n.f * 2, Math.max(80, n.d - 40), "triangle", 0.05);
-    }, delay);
-    delay += 90;
-  });
-}
-/* Questify v6
-   - App rename Questify
-   - No preloaded quests/rewards/achievements
-   - Settings: Test button that seeds Achievements with 1 of each trophy tier
-   - Level-up: louder/longer trumpet + full-screen confetti burst
+/* Questify v12_Blueprint_Architecture
+   - Implemented sleek blueprints matrix UI theme layer.
+   - Removed all space-mode visual layers and switcher triggers.
+   - Entirely dropped walkthrough spotlight tutorial nodes and tracking parameters.
 */
 
-const LS_KEY = "questify.v6";
-function wipeAllUserData(){
-  // Remove all Questify-related localStorage keys (covers older versions too).
-  try{
-    const keysToRemove = [];
-    for(let i=0;i<localStorage.length;i++){
-      const k = localStorage.key(i);
-      if(!k) continue;
-      if(/^questify/i.test(k)) keysToRemove.push(k);
-    }
-    keysToRemove.forEach(k => {
-      try{ localStorage.removeItem(k); }catch{ /* ignore */ }
-    });
-  }catch{
-    // last resort: remove the main key only
-    try{ localStorage.removeItem(LS_KEY); }catch{ /* ignore */ }
-  }
-}
-
-
-const BADGE_TIERS = [
-  { name: "Iron",     color: "#94a3b8" },
-  { name: "Bronze",   color: "#c08457" },
-  { name: "Silver",   color: "#cbd5e1" },
-  { name: "Gold",     color: "#fbbf24" },
-  { name: "Diamond",  color: "#7dd3fc" },
-  { name: "Ruby",     color: "#fb7185" },
-  { name: "Sapphire", color: "#60a5fa" },
-  { name: "Emerald",  color: "#34d399" },
-  { name: "Obsidian", color: "#111827" },
-  { name: "Platinum", color: "#e5e7eb" }
-];
-const PLATINUM = BADGE_TIERS[BADGE_TIERS.length - 1];
+const LS_KEY = "questify.v12_blueprint_rpg";
 
 const DEFAULT_STATE = {
   settings: {
     xpPerLevel: 100,
     goldPerLevel: 20,
-    spPerLevel: 1,
-    sfxOn: true,
-    musicOn: true,
-
-    // Theme + music can be mixed and matched
-    theme: "space",          // space | arcade | fall | spring | winter
-    musicTrack: "builtin"     // builtin or "mp3:Music/<Folder>/<file>.mp3"
+    spPerLevel: 1
   },
-  player: { level: 1, xp: 0, lifetimeXP: 0, lifetimeGold: 0, lifetimeSp: 0, gold: 0, skill: 0 },
+  player: { 
+    level: 1, xp: 0, gold: 0, skill: 0,
+    healthLvl: 1, healthXp: 0,
+    financialLvl: 1, financialXp: 0,
+    honeydewLvl: 1, honeydewXp: 0,
+    hpTokens: 0, mpTokens: 0, hcTokens: 0
+  },
   quests: { side: [], main: [] },
   rewards: [],
   completionLog: []
 };
 
-function loadState(){
+let state = loadState();
+
+function loadState() {
   const raw = localStorage.getItem(LS_KEY);
-  if(!raw) return structuredClone(DEFAULT_STATE);
-  try { return JSON.parse(raw); } catch { return structuredClone(DEFAULT_STATE); }
-}
-function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-
-function normalizeState(s){
-  s = s || structuredClone(DEFAULT_STATE);
-  s.settings = s.settings || structuredClone(DEFAULT_STATE.settings);
-  if(typeof s.settings.sfxOn !== "boolean") s.settings.sfxOn = true;
-  if(typeof s.settings.musicOn !== "boolean") s.settings.musicOn = true;
-  if(!Number.isFinite(s.settings.goldPerLevel)) s.settings.goldPerLevel = 20;
-  if(!Number.isFinite(s.settings.spPerLevel)) s.settings.spPerLevel = 1;
-  const allowedThemes = new Set(["space","arcade","fall","spring","winter","summer"]);
-  if(typeof s.settings.theme !== "string" || !allowedThemes.has(s.settings.theme)) s.settings.theme = "space";
-
-  if(typeof s.settings.musicTrack !== "string") s.settings.musicTrack = "builtin";
-  // Back-compat: if old value is "space" or similar, map to builtin
-  if(s.settings.musicTrack === "space" || s.settings.musicTrack === "space-ambient") s.settings.musicTrack = "builtin";
-  s.player = s.player || structuredClone(DEFAULT_STATE.player);
-  if(!Number.isFinite(s.player.lifetimeGold)) s.player.lifetimeGold = 0;
-  if(!Number.isFinite(s.player.lifetimeSp)) s.player.lifetimeSp = 0;
-  if(!Number.isFinite(s.player.lifetimeXP)) s.player.lifetimeXP = 0;
-  s.quests = s.quests || {side:[], main:[]};
-  s.quests.side = s.quests.side || [];
-  s.quests.main = s.quests.main || [];
-  s.rewards = s.rewards || [];
-  s.completionLog = s.completionLog || [];
-  return s;
-}
-let state = normalizeState(loadState());
-
-/* ---------- Audio (procedural WebAudio) ---------- */
-let audioCtx = null;
-function ensureAudio(){
-  if(audioCtx) return audioCtx;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  return audioCtx;
-}
-
-/* ---------- Theme SFX ---------- */
-// Arcade click SFX (kept as-is)
-function sfxClickArcade(){
-  playTone(520, 28, "square", 0.03);
-  playTone(1040, 22, "triangle", 0.018);
-}
-
-function sfxClickSpace(){
-  // soft scanner blip
-  playTone(440, 34, "sine", 0.022);
-  setTimeout(() => playTone(880, 24, "triangle", 0.016), 16);
-}
-
-function sfxClickFall(){
-  // warm "wood" tap
-  playTone(220, 40, "triangle", 0.026);
-  setTimeout(() => playTone(330, 34, "sine", 0.018), 18);
-}
-
-function sfxClickSpring(){
-  // bright chirp
-  playTone(660, 28, "sine", 0.022);
-  setTimeout(() => playTone(990, 26, "triangle", 0.016), 14);
-}
-
-function sfxClickWinter(){
-  // icy tick
-  playTone(1200, 22, "triangle", 0.018);
-  setTimeout(() => playTone(1800, 18, "sine", 0.012), 10);
-}
-
-function sfxClickSummer(){
-  // upbeat pop
-  playTone(600, 26, "square", 0.024);
-  setTimeout(() => playTone(900, 22, "triangle", 0.016), 12);
-}
-
-function sfxPurchaseSpace(){
-  // confirm + sparkle
-  playTone(520, 90, "sine", 0.05);
-  setTimeout(() => playTone(780, 110, "triangle", 0.055), 70);
-  setTimeout(() => playTone(1040, 120, "triangle", 0.045), 140);
-}
-
-function sfxPurchaseFall(){
-  // cozy "coin" with soft chime
-  playTone(330, 90, "triangle", 0.06);
-  setTimeout(() => playTone(440, 80, "sine", 0.04), 55);
-  setTimeout(() => playTone(550, 90, "triangle", 0.05), 110);
-}
-
-function sfxPurchaseSpring(){
-  // bright sparkle purchase
-  playTone(880, 90, "triangle", 0.06);
-  setTimeout(() => playTone(1320, 80, "sine", 0.035), 70);
-}
-
-function sfxPurchaseWinter(){
-  // crystal clink
-  playTone(1400, 80, "sine", 0.045);
-  setTimeout(() => playTone(2100, 60, "triangle", 0.03), 55);
-  setTimeout(() => playTone(1750, 70, "triangle", 0.035), 110);
-}
-
-function sfxPurchaseSummer(){
-  // fun upbeat purchase jingle
-  playTone(660, 90, "square", 0.06);
-  setTimeout(() => playTone(990, 100, "square", 0.055), 70);
-  setTimeout(() => playTone(1320, 140, "triangle", 0.045), 140);
-}
-
-function sfxLevelUpArcade(){
-  // louder + longer trumpet-ish fanfare (original)
-  if(!state.settings.sfxOn) return;
-  const seq = [
-    {f:392, d:260, t:"sawtooth"},
-    {f:494, d:260, t:"sawtooth"},
-    {f:587, d:300, t:"sawtooth"},
-    {f:784, d:320, t:"sawtooth"},
-    {f:988, d:520, t:"sawtooth"},
-  ];
-  let at = 0;
-  seq.forEach(n => {
-    setTimeout(() => {
-      playTone(n.f, n.d, n.t, 0.085);
-      playTone(n.f * 2, Math.max(120, n.d-80), "triangle", 0.03);
-    }, at);
-    at += 210;
-  });
-}
-
-function sfxLevelUpSpace(){
-  // "warp" rise
-  if(!state.settings.sfxOn) return;
-  const seq = [220, 330, 440, 660, 880, 1100];
-  let at = 0;
-  seq.forEach((f, i) => {
-    setTimeout(() => {
-      playTone(f, 220, i < 3 ? "sine" : "sawtooth", 0.07);
-      playTone(f*2, 140, "triangle", 0.025);
-    }, at);
-    at += 160;
-  });
-}
-
-function sfxLevelUpFall(){
-  // warm cozy flourish
-  if(!state.settings.sfxOn) return;
-  const seq = [262, 330, 392, 523, 659];
-  let at = 0;
-  seq.forEach((f, i) => {
-    setTimeout(() => {
-      playTone(f, 240, i < 2 ? "triangle" : "sawtooth", 0.075);
-      playTone(f*2, 120, "triangle", 0.02);
-    }, at);
-    at += 180;
-  });
-}
-
-function sfxLevelUpSpring(){
-  // bright energetic flourish
-  if(!state.settings.sfxOn) return;
-  const seq = [392, 494, 659, 784, 988];
-  let at = 0;
-  seq.forEach((f, i) => {
-    setTimeout(() => {
-      playTone(f, 220, "sine", 0.07);
-      playTone(f*2, 120, "triangle", 0.025);
-    }, at);
-    at += 170;
-  });
-}
-
-function sfxLevelUpWinter(){
-  // icy crystal fanfare
-  if(!state.settings.sfxOn) return;
-  const seq = [523, 784, 1046, 1568, 2093];
-  let at = 0;
-  seq.forEach((f) => {
-    setTimeout(() => {
-      playTone(f, 240, "triangle", 0.055);
-      playTone(f*2, 90, "sine", 0.015);
-    }, at);
-    at += 180;
-  });
-}
-
-function sfxLevelUpSummer(){
-  // upbeat celebration
-  if(!state.settings.sfxOn) return;
-  const seq = [392, 523, 659, 784, 988, 1175];
-  let at = 0;
-  seq.forEach((f, i) => {
-    setTimeout(() => {
-      playTone(f, 200, i < 3 ? "square" : "triangle", 0.075);
-      playTone(f*2, 110, "triangle", 0.02);
-    }, at);
-    at += 150;
-  });
-}
-
-const THEME_SFX = {
-  space:  { click: sfxClickSpace,  purchase: sfxPurchaseSpace,  levelUp: sfxLevelUpSpace },
-  arcade: { click: sfxClickArcade, purchase: sfxPurchaseArcade, levelUp: sfxLevelUpArcade },
-  fall:   { click: sfxClickFall,   purchase: sfxPurchaseFall,   levelUp: sfxLevelUpFall },
-  spring: { click: sfxClickSpring, purchase: sfxPurchaseSpring, levelUp: sfxLevelUpSpring },
-  winter: { click: sfxClickWinter, purchase: sfxPurchaseWinter, levelUp: sfxLevelUpWinter },
-  summer: { click: sfxClickSummer, purchase: sfxPurchaseSummer, levelUp: sfxLevelUpSummer }
-};
-
-function currentThemeId(){
-  return (state?.settings?.theme || "space");
-}
-
-function sfxClick(){
-  const fn = THEME_SFX[currentThemeId()]?.click;
-  (fn || sfxClickArcade)();
-}
-
-function sfxPurchase(){
-  const fn = THEME_SFX[currentThemeId()]?.purchase;
-  (fn || sfxPurchaseArcade)();
-}
-
-function sfxLevelUp(){
-  const fn = THEME_SFX[currentThemeId()]?.levelUp;
-  (fn || sfxLevelUpArcade)();
-}
-
-/* ---------- Theme + music catalog ---------- */
-const THEMES = [
-  { id: "space",  label: "Space" },
-  { id: "arcade", label: "Arcade" },
-  { id: "fall",   label: "Fall" },
-  { id: "spring", label: "Spring" },
-  { id: "winter", label: "Winter" },
-  { id: "summer", label: "Summer" }
-];
-
-// Music is loaded from Music/index.json (generated by tools/build_music_index.js)
-// Users can still choose the built-in ambient if they haven't added MP3s yet.
-let musicCatalog = [
-  { id: "builtin", name: "Built-in: Space Ambient", type: "builtin" }
-];
-
-async function loadMusicCatalog(){
-  try{
-    const res = await fetch("Music/index.json", { cache: "no-store" });
-    if(!res.ok) throw new Error("no index");
-    const data = await res.json();
-    const tracks = Array.isArray(data?.tracks) ? data.tracks : [];
-
-    const mp3Items = tracks
-      .filter(t => t && typeof t.name === "string" && typeof t.file === "string")
-      .map(t => {
-        const file = t.file.startsWith("Music/") ? t.file : `Music/${t.file}`;
-        return {
-          id: `mp3:${file}`,
-          name: t.name,
-          type: "mp3",
-          src: encodeURI(file)
-        };
-      });
-
-    musicCatalog = [{ id: "builtin", name: "Built-in: Space Ambient", type: "builtin" }, ...mp3Items];
-  }catch{
-    // Leave the built-in option only
-    musicCatalog = [{ id: "builtin", name: "Built-in: Space Ambient", type: "builtin" }];
+  if (!raw) return structuredClone(DEFAULT_STATE);
+  try {
+    const parsed = JSON.parse(raw);
+    parsed.settings = { ...DEFAULT_STATE.settings, ...parsed.settings };
+    parsed.player = { ...DEFAULT_STATE.player, ...parsed.player };
+    parsed.quests = parsed.quests || { side: [], main: [] };
+    parsed.rewards = parsed.rewards || [];
+    parsed.completionLog = parsed.completionLog || [];
+    return parsed;
+  } catch {
+    return structuredClone(DEFAULT_STATE);
   }
 }
 
-let bgAudio = null; // HTMLAudioElement for MP3 playback
-
-function ensureBgAudio(){
-  if(bgAudio) return bgAudio;
-  bgAudio = new Audio();
-  bgAudio.loop = true;
-  bgAudio.preload = "auto";
-  bgAudio.volume = 0.35;
-  return bgAudio;
+function saveState() {
+  localStorage.setItem(LS_KEY, JSON.stringify(state));
 }
 
-function selectedMusicEntry(){
-  return musicCatalog.find(x => x.id === state.settings.musicTrack) || musicCatalog[0];
+document.addEventListener("DOMContentLoaded", () => {
+  initTabs();
+  initForms();
+  initDangerZone();
+  renderAll();
+});
+
+function renderAll() {
+  renderHUD();
+  renderQuestList("side");
+  renderQuestList("main");
+  renderRewardList();
+  syncSettingsForm();
 }
 
-function startMusicIfNeeded(){
-  if(!state?.settings?.musicOn) return;
-  const entry = selectedMusicEntry();
-  if(!entry) return;
-  if(entry.type === "builtin"){
-    stopMp3();
-    startBgmIfNeeded();
-    syncAudioToggles();
-  }else{
-    stopBgm();
-    startMp3(entry.src);
-  }
+/* ---------- RPG System Telemetry Dashboard HUD ---------- */
+function renderHUD() {
+  const nextXp = xpPerLevel();
+  document.getElementById("levelLine").textContent = `Level ${state.player.level} • ${state.player.xp}/${nextXp} XP`;
+  document.getElementById("gold").textContent = state.player.gold;
+  document.getElementById("skill").textContent = state.player.skill;
+  document.getElementById("tokenHp").textContent = state.player.hpTokens || 0;
+  document.getElementById("tokenMp").textContent = state.player.mpTokens || 0;
+  document.getElementById("tokenHc").textContent = state.player.hcTokens || 0;
+
+  const pct = Math.floor((state.player.xp / nextXp) * 100);
+  document.getElementById("xpFill").style.width = `${Math.min(pct, 100)}%`;
+  document.getElementById("xpPct").textContent = `${pct}%`;
+
+  // Update System Sub-Attribute Progress Array Tracks
+  document.getElementById("txtHealthLvl").textContent = `Rank ${state.player.healthLvl}`;
+  document.getElementById("fillHealth").style.width = `${state.player.healthXp}%`;
+
+  document.getElementById("txtFinancialLvl").textContent = `Rank ${state.player.financialLvl}`;
+  document.getElementById("fillFinancial").style.width = `${state.player.financialXp}%`;
+
+  document.getElementById("txtHoneydewLvl").textContent = `Rank ${state.player.honeydewLvl}`;
+  document.getElementById("fillHoneydew").style.width = `${state.player.honeydewXp}%`;
 }
 
-function stopMp3(){
-  if(!bgAudio) return;
-  try{ bgAudio.pause(); }catch{}
-}
+/* ---------- Operational Quest Matrices ---------- */
+function renderQuestList(kind) {
+  const container = document.getElementById(`${kind}List`);
+  if (!container) return;
+  container.innerHTML = "";
 
-function startMp3(src){
-  const a = ensureBgAudio();
-  if(a.src !== src) a.src = src;
-  if(!state?.settings?.musicOn) return;
-  // Autoplay restrictions: play will succeed only after a user gesture.
-  a.play().catch(()=>{});
-}
-
-/* ---------- Background music (procedural, looped) ---------- */
-let bgm = {
-  started: false,
-  master: null,
-  filter: null,
-  oscs: [],
-  lfo: null,
-  lfoGain: null,
-  timer: null,
-  arpTimer: null,
-  step: 0
-};
-
-function startBgmIfNeeded(){
-  if(!state?.settings?.musicOn) return;
-  const ctx = ensureAudio();
-  // iOS/Safari: resume context on user gesture
-  if(ctx.state === "suspended") ctx.resume?.();
-  if(bgm.started) return;
-  bgm.started = true;
-
-  // -------- Space-exploration ambient BGM (procedural) --------
-  // Design goals:
-  // - Slow, wide pad with gentle movement
-  // - Soft arpeggio "scanner" that feels like traveling through space
-  // - Very light delay for depth (still subtle so it won't annoy)
-
-  const master = ctx.createGain();
-  master.gain.value = 0.0001;
-
-  const filter = ctx.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.value = 1100;
-  filter.Q.value = 0.75;
-
-  // Delay (wet) + dry mix
-  const dry = ctx.createGain();
-  const wet = ctx.createGain();
-  dry.gain.value = 0.90;
-  wet.gain.value = 0.22;
-
-  const delay = ctx.createDelay(1.5);
-  delay.delayTime.value = 0.34;
-  const fb = ctx.createGain();
-  fb.gain.value = 0.24;
-  delay.connect(fb).connect(delay);
-
-  master.connect(filter);
-  filter.connect(dry).connect(ctx.destination);
-  filter.connect(delay);
-  delay.connect(wet).connect(ctx.destination);
-
-  bgm.master = master;
-  bgm.filter = filter;
-
-  // 4-voice pad (low drone + 3 chord voices)
-  const makePadOsc = (type, detuneCents=0, gain=0.07) => {
-    const o = ctx.createOscillator();
-    o.type = type;
-    o.detune.value = detuneCents;
-    const g = ctx.createGain();
-    g.gain.value = gain;
-    o.connect(g).connect(master);
-    o.start();
-    return {o, g};
-  };
-
-  const drone = makePadOsc("sine", -12, 0.06);
-  const p1 = makePadOsc("triangle", -6, 0.065);
-  const p2 = makePadOsc("sine", 6, 0.065);
-  const p3 = makePadOsc("triangle", 0, 0.06);
-  bgm.oscs = [drone.o, p1.o, p2.o, p3.o];
-
-  // gentle detune drift / vibrato
-  const lfo = ctx.createOscillator();
-  lfo.type = "sine";
-  lfo.frequency.value = 0.09;
-  const lfoGain = ctx.createGain();
-  lfoGain.gain.value = 10; // cents
-  lfo.connect(lfoGain);
-  bgm.oscs.forEach(o => lfoGain.connect(o.detune));
-  lfo.start();
-  bgm.lfo = lfo;
-  bgm.lfoGain = lfoGain;
-
-  // Fade in (slow)
-  const t0 = ctx.currentTime;
-  master.gain.setValueAtTime(0.0001, t0);
-  master.gain.exponentialRampToValueAtTime(0.060, t0 + 2.2);
-
-  // Spacey progression: sus/add9 chords (in D)
-  const chords = [
-    // [root, third, fifth, ninth] (Hz)
-    [146.83, 220.00, 293.66, 329.63], // Dsus2 (D A D F#-ish)
-    [130.81, 196.00, 261.63, 293.66], // Csus2
-    [164.81, 246.94, 329.63, 369.99], // Esus2
-    [110.00, 164.81, 220.00, 246.94]  // Asus2
-  ];
-
-  const applyChord = (freqs) => {
-    const t = ctx.currentTime;
-    const glide = 0.35;
-    // drone sits at the root (octave down)
-    bgm.oscs[0].frequency.exponentialRampToValueAtTime(Math.max(35, freqs[0] / 2), t + glide);
-    bgm.oscs[1].frequency.exponentialRampToValueAtTime(Math.max(40, freqs[1]), t + glide);
-    bgm.oscs[2].frequency.exponentialRampToValueAtTime(Math.max(40, freqs[2]), t + glide);
-    bgm.oscs[3].frequency.exponentialRampToValueAtTime(Math.max(40, freqs[3]), t + glide);
-  };
-
-  // Arp "scanner" note (independent of SFX toggle)
-  const playBgmNote = (freq, durationMs=180) => {
-    if(!state?.settings?.musicOn) return;
-    const t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    o.type = "sine";
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.020, t + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + durationMs/1000);
-    // a slightly brighter branch for the arp only
-    const arpFilter = ctx.createBiquadFilter();
-    arpFilter.type = "bandpass";
-    arpFilter.frequency.value = 1400;
-    arpFilter.Q.value = 0.9;
-    o.frequency.setValueAtTime(freq, t);
-    o.connect(g).connect(arpFilter).connect(master);
-    o.start(t);
-    o.stop(t + durationMs/1000 + 0.03);
-  };
-
-  // initialize
-  applyChord(chords[0]);
-  bgm.step = 0;
-
-  // chord changes (slow)
-  bgm.timer = setInterval(() => {
-    if(!state?.settings?.musicOn) return;
-    bgm.step = (bgm.step + 1) % chords.length;
-    applyChord(chords[bgm.step]);
-  }, 6000);
-
-  // arp pattern synced to the current chord (simple, calm)
-  const arpOrder = [0, 2, 1, 3, 2, 3, 1, 2];
-  let arpIdx = 0;
-  bgm.arpTimer = setInterval(() => {
-    if(!state?.settings?.musicOn) return;
-    const c = chords[bgm.step];
-    const n = c[arpOrder[arpIdx % arpOrder.length]];
-    // nudge up an octave sometimes for motion
-    const octave = (arpIdx % 8 === 6) ? 2 : 1;
-    playBgmNote(n * octave, 160);
-    arpIdx++;
-  }, 520);
-}
-
-function syncAudioToggles(){
-  // Keep music obeying musicOn, for BOTH built-in and MP3.
-  const on = !!state?.settings?.musicOn;
-
-  // MP3 volume
-  if(bgAudio){
-    bgAudio.volume = on ? 0.35 : 0.0;
-    if(!on){ try{ bgAudio.pause(); }catch{} }
+  const listItems = state.quests[kind] || [];
+  if (listItems.length === 0) {
+    container.innerHTML = `<div class="hintLine" style="padding:10px 0; margin:0;">No mapped ${kind} operational objectives found.</div>`;
+    return;
   }
 
-  // Built-in procedural fade
-  if(!bgm.master || !audioCtx) return;
-  const ctx = audioCtx;
-  const t = ctx.currentTime;
-  const target = on ? 0.060 : 0.0001;
-  bgm.master.gain.cancelScheduledValues(t);
-  bgm.master.gain.setValueAtTime(Math.max(0.0001, bgm.master.gain.value), t);
-  bgm.master.gain.exponentialRampToValueAtTime(target, t + 0.35);
-}
+  const decoratedList = listItems.map(q => {
+    let isDone = false;
+    let progressLabel = "";
+    const categoryIcon = q.category === "Financial" ? "💵" : (q.category === "Honeydew" ? "🍯" : "🍏");
+    const categoryName = q.category === "Financial" ? "Treasury Array" : (q.category === "Honeydew" ? "Honeydew Matrix" : "Health Node");
 
-function stopBgm(){
-  // Fully stop oscillators/timers (used for reset)
-  try{
-    if(bgm.timer){ clearInterval(bgm.timer); bgm.timer = null; }
-    if(bgm.arpTimer){ clearInterval(bgm.arpTimer); bgm.arpTimer = null; }
-    const ctx = audioCtx;
-    if(ctx){
-      if(bgm.master){
-        const t = ctx.currentTime;
-        bgm.master.gain.cancelScheduledValues(t);
-        bgm.master.gain.setValueAtTime(Math.max(0.0001, bgm.master.gain.value), t);
-        bgm.master.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
-      }
-      if(bgm.oscs && bgm.oscs.length){
-        bgm.oscs.forEach(o => { try{ o.stop(); }catch{} });
-      }
-      if(bgm.lfo){ try{ bgm.lfo.stop(); }catch{} }
+    if (kind === "side") {
+      const doneInInterval = completionsForInterval(q.id, q.frequency || "Daily");
+      const limit = q.maxCompletions || 1;
+      isDone = doneInInterval >= limit;
+      progressLabel = `${categoryIcon} ${categoryName} • ${q.frequency || "Daily"} (${doneInInterval}/${limit})`;
+    } else {
+      isDone = state.completionLog.some(x => x.questId === q.id);
+      progressLabel = `${categoryIcon} ${categoryName} • Milestone`;
     }
-  }catch{ /* ignore */ }
-  bgm.started = false;
-  bgm.master = null;
-  bgm.filter = null;
-  bgm.oscs = [];
-  bgm.lfo = null;
-  bgm.lfoGain = null;
-}
+    return { item: q, isDone, progressLabel };
+  });
 
-function bindFirstInteractionAudio(){
-  // Autoplay restrictions (iOS/Safari): must start audio after a user gesture.
-  const kick = () => {
-    try{
-      ensureAudio();
-      startMusicIfNeeded();
-      syncAudioToggles();
-    }catch{ /* ignore */ }
-    window.removeEventListener("pointerdown", kick);
-    window.removeEventListener("touchstart", kick);
-    window.removeEventListener("keydown", kick);
-  };
-  window.addEventListener("pointerdown", kick, {passive:true});
-  window.addEventListener("touchstart", kick, {passive:true});
-  window.addEventListener("keydown", kick);
-}
+  decoratedList.sort((a, b) => a.isDone - b.isDone);
 
-function bindGlobalClickSfx(){
-  document.addEventListener("click", (ev) => {
-    const el = ev.target.closest?.("button, .btn, .iconBtn, .tab, .themeBtn");
-    if(!el) return;
-    // don't play if disabled
-    if(el.disabled) return;
-    if(state?.settings?.sfxOn !== true) return;
-    ensureAudio();
-    sfxClick();
-  }, {passive:true});
-}
-function playTone(freq, durationMs, type="sine", gain=0.08){
-  if(!state.settings.sfxOn) return;
-  const ctx = ensureAudio();
-  const t0 = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  const g = ctx.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, t0);
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + durationMs/1000);
-  osc.connect(g).connect(ctx.destination);
-  osc.start(t0);
-  osc.stop(t0 + durationMs/1000 + 0.02);
-}
-function sfxComplete(){ playTone(420, 110, "sine", 0.08); setTimeout(() => playTone(680, 100, "triangle", 0.07), 50); }
+  decoratedList.forEach(pack => {
+    const q = pack.item;
+    const card = document.createElement("div");
+    card.className = `itemCard ${pack.isDone ? "completed" : ""}`;
 
-// Legacy SFX kept for reference (do not call directly; themed routing happens near top of file)
-function sfxPurchaseLegacy(){ playTone(880, 140, "triangle", 0.08); setTimeout(() => playTone(660, 120, "sine", 0.06), 70); }
-function sfxLevelUpLegacy(){
-  // louder + longer trumpet-ish fanfare
-  if(!state.settings.sfxOn) return;
-  const seq = [
-    {f:392, d:260, t:"sawtooth"},
-    {f:494, d:260, t:"sawtooth"},
-    {f:587, d:300, t:"sawtooth"},
-    {f:784, d:320, t:"sawtooth"},
-    {f:988, d:520, t:"sawtooth"},
-  ];
-  let at = 0;
-  seq.forEach(n => {
-    setTimeout(() => {
-      playTone(n.f, n.d, n.t, 0.085);
-      // add a soft octave layer for "brass body"
-      playTone(n.f * 2, Math.max(120, n.d-80), "triangle", 0.03);
-    }, at);
-    at += 210;
+    const meta = document.createElement("div");
+    meta.className = "itemMeta";
+    
+    const title = document.createElement("div");
+    title.className = "itemTitle";
+    title.textContent = q.label;
+
+    const sub = document.createElement("div");
+    sub.className = "itemSubtitle";
+    
+    const rewardToken = `+${q.xpReward || 0}XP / ${q.goldReward || 0}G` + (q.spReward ? ` / ${q.spReward}SP` : '');
+    sub.innerHTML = `<span style="color:var(--accent-light)">${pack.progressLabel}</span> <span style="color:var(--lineSoft)">|</span> <span style="color:#fbbf24">${rewardToken}</span>`;
+
+    meta.appendChild(title);
+    meta.appendChild(sub);
+    card.appendChild(meta);
+
+    const actionContainer = document.createElement("div");
+    actionContainer.style.display = "flex";
+    actionContainer.style.gap = "6px";
+
+    if (state.completionLog.some(x => x.questId === q.id)) {
+      const undoBtn = document.createElement("button");
+      undoBtn.className = "btn btnUndo";
+      undoBtn.textContent = "Undo";
+      undoBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        undoLastCompletion(q.id);
+      });
+      actionContainer.appendChild(undoBtn);
+    }
+
+    const mainBtn = document.createElement("button");
+    if (pack.isDone) {
+      mainBtn.className = "btn btnDoneState";
+      mainBtn.textContent = "✓";
+      mainBtn.disabled = true;
+    } else {
+      mainBtn.className = "btn btnComplete";
+      mainBtn.textContent = "Sync Complete";
+      mainBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        completeQuest(q.id, kind);
+      });
+    }
+
+    actionContainer.appendChild(mainBtn);
+    card.appendChild(actionContainer);
+    card.addEventListener("click", () => openEditModal(q.id, kind));
+    container.appendChild(card);
   });
 }
 
-/* ---------- Celebration overlay (5s) ---------- */
-function startCelebration(){
+/* ---------- Secure Provision Rewards Store Vault ---------- */
+function renderRewardList() {
+  const container = document.getElementById("rewardList");
+  if (!container) return;
+  container.innerHTML = "";
+
+  let listItems = [...(state.rewards || [])];
+  if (listItems.length === 0) {
+    container.innerHTML = `<div class="hintLine" style="padding:10px 0; margin:0;">No privileges or clearables tracked in repository.</div>`;
+    return;
+  }
+
+  listItems.sort((a, b) => {
+    const costA = (a.spCost || 0) * 10000 + (a.hpCost || 0) * 1000 + (a.mpCost || 0) * 1000 + (a.hcCost || 0) * 1000 + (a.goldCost || 0);
+    const costB = (b.spCost || 0) * 10000 + (b.hpCost || 0) * 1000 + (b.mpCost || 0) * 1000 + (b.hcCost || 0) * 1000 + (b.goldCost || 0);
+    return costA - costB;
+  });
+
+  listItems.forEach(r => {
+    const card = document.createElement("div");
+    card.className = "itemCard";
+
+    const meta = document.createElement("div");
+    meta.className = "itemMeta";
+    
+    const title = document.createElement("div");
+    title.className = "itemTitle";
+    title.textContent = r.label;
+
+    const sub = document.createElement("div");
+    sub.className = "itemSubtitle";
+
+    let costStrings = [];
+    if (r.spCost > 0) costStrings.push(`${r.spCost} SP`);
+    if (r.goldCost > 0) costStrings.push(`${r.goldCost} Gold`);
+    if (r.hpCost > 0) costStrings.push(`🍏 ${r.hpCost} HP`);
+    if (r.mpCost > 0) costStrings.push(`💵 ${r.mpCost} MP`);
+    if (r.hcCost > 0) costStrings.push(`🍯 ${r.hcCost} Honey`);
+    if (costStrings.length === 0) costStrings.push("0 Matrix Resource");
+
+    sub.textContent = costStrings.join(" • ");
+
+    meta.appendChild(title);
+    meta.appendChild(sub);
+    card.appendChild(meta);
+
+    const buyBtn = document.createElement("button");
+    buyBtn.className = "btn btnComplete";
+    buyBtn.style.background = "linear-gradient(135deg, #0055ff, #001144)";
+    buyBtn.textContent = "Allocate Clear";
+
+    const canAfford = state.player.gold >= (r.goldCost || 0) &&
+                      state.player.skill >= (r.spCost || 0) &&
+                      (state.player.hpTokens || 0) >= (r.hpCost || 0) &&
+                      (state.player.mpTokens || 0) >= (r.mpCost || 0) &&
+                      (state.player.hcTokens || 0) >= (r.hcCost || 0);
+
+    if (!canAfford) {
+      buyBtn.disabled = true;
+      buyBtn.style.opacity = "0.2";
+    } else {
+      buyBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        buyReward(r.id);
+      });
+    }
+
+    card.addEventListener("click", () => openEditModal(r.id, "reward"));
+    card.appendChild(buyBtn);
+    container.appendChild(card);
+  });
+}
+
+/* ---------- Mathematical Loop Scaling Logic ---------- */
+function completeQuest(id, kind) {
+  const targetList = state.quests[kind] || [];
+  const q = targetList.find(x => x.id === id);
+  if (!q) return;
+
+  const xpG = Math.max(0, parseInt(q.xpReward) || 0);
+  const goldG = Math.max(0, parseInt(q.goldReward) || 0);
+  const spG = Math.max(0, parseInt(q.spReward) || 0);
+  const selectedCat = q.category || "Health";
+
+  state.completionLog.push({
+    id: "log_" + Math.random().toString(16).slice(2) + Date.now(),
+    questId: q.id,
+    kind: kind,
+    category: selectedCat,
+    xpGained: xpG,
+    goldGained: goldG,
+    spGained: spG,
+    dateISO: new Date().toISOString()
+  });
+
+  applyRewardBonuses(xpG, goldG, spG);
+  applyCategoryXp(selectedCat, 25);
+  
+  toast(`Telemetry Updated: +${xpG} XP`);
+  saveState();
+  renderAll();
+}
+
+function applyCategoryXp(category, amount) {
+  let subTitle = "";
+  let rewardLine = "";
+
+  if (category === "Health") {
+    state.player.healthXp += amount;
+    if (state.player.healthXp >= 100) {
+      state.player.healthXp -= 100;
+      state.player.healthLvl += 1;
+      state.player.hpTokens = (state.player.hpTokens || 0) + 1;
+      subTitle = "HEALTH ARRAY OPTIMIZED";
+      rewardLine = "ALLOCATED 1 VITALS BLOCK (HP) 🍏";
+    }
+  } else if (category === "Financial") {
+    state.player.financialXp += amount;
+    if (state.player.financialXp >= 100) {
+      state.player.financialXp -= 100;
+      state.player.financialLvl += 1;
+      state.player.mpTokens = (state.player.mpTokens || 0) + 1;
+      subTitle = "TREASURY COUNTER MODIFIED";
+      rewardLine = "ALLOCATED 1 CREDIT NODE (MP) 💵";
+    }
+  } else if (category === "Honeydew") {
+    state.player.honeydewXp += amount;
+    if (state.player.honeydewXp >= 100) {
+      state.player.honeydewXp -= 100;
+      state.player.honeydewLvl += 1;
+      state.player.hcTokens = (state.player.hcTokens || 0) + 1;
+      subTitle = "HONEYDEW PARAMETERS UPGRADED";
+      rewardLine = "ALLOCATED 1 HONEYCOMB LINK TOKEN 🍯";
+    }
+  }
+
+  if (subTitle !== "") {
+    startCelebration(subTitle, rewardLine);
+  }
+}
+
+function undoLastCompletion(questId) {
+  const index = findLastIndex(state.completionLog, x => x.questId === questId);
+  if (index === -1) return;
+
+  const entry = state.completionLog[index];
+  state.completionLog.splice(index, 1);
+
+  state.player.xp -= entry.xpGained;
+  state.player.gold -= entry.goldGained;
+  state.player.skill -= entry.spGained;
+
+  const targetCat = entry.category || "Health";
+  if (targetCat === "Health") {
+    state.player.healthXp -= 25;
+    if (state.player.healthXp < 0 && state.player.healthLvl > 1) {
+      state.player.healthLvl -= 1;
+      state.player.healthXp += 100;
+      state.player.hpTokens = Math.max(0, (state.player.hpTokens || 0) - 1);
+    }
+    if (state.player.healthXp < 0) state.player.healthXp = 0;
+  } else if (targetCat === "Financial") {
+    state.player.financialXp -= 25;
+    if (state.player.financialXp < 0 && state.player.financialLvl > 1) {
+      state.player.financialLvl -= 1;
+      state.player.financialXp += 100;
+      state.player.mpTokens = Math.max(0, (state.player.mpTokens || 0) - 1);
+    }
+    if (state.player.financialXp < 0) state.player.financialXp = 0;
+  } else if (targetCat === "Honeydew") {
+    state.player.honeydewXp -= 25;
+    if (state.player.honeydewXp < 0 && state.player.honeydewLvl > 1) {
+      state.player.honeydewLvl -= 1;
+      state.player.honeydewXp += 100;
+      state.player.hcTokens = Math.max(0, (state.player.hcTokens || 0) - 1);
+    }
+    if (state.player.honeydewXp < 0) state.player.honeydewXp = 0;
+  }
+
+  while (state.player.xp < 0 && state.player.level > 1) {
+    state.player.level -= 1;
+    state.player.xp += xpPerLevel();
+    state.player.gold -= state.settings.goldPerLevel;
+    state.player.skill -= state.settings.spPerLevel;
+  }
+
+  if (state.player.xp < 0) state.player.xp = 0;
+  if (state.player.gold < 0) state.player.gold = 0;
+  if (state.player.skill < 0) state.player.skill = 0;
+
+  toast("Telemetry Inversion Complete.");
+  saveState();
+  renderAll();
+}
+
+function buyReward(id) {
+  const r = state.rewards.find(x => x.id === id);
+  if (!r) return;
+  
+  const goldCost = r.goldCost || 0;
+  const spCost = r.spCost || 0;
+  const hpCost = r.hpCost || 0;
+  const mpCost = r.mpCost || 0;
+  const hcCost = r.hcCost || 0;
+
+  if (state.player.gold >= goldCost && 
+      state.player.skill >= spCost && 
+      (state.player.hpTokens || 0) >= hpCost && 
+      (state.player.mpTokens || 0) >= mpCost && 
+      (state.player.hcTokens || 0) >= hcCost) {
+    
+    state.player.gold -= goldCost;
+    state.player.skill -= spCost;
+    state.player.hpTokens = (state.player.hpTokens || 0) - hpCost;
+    state.player.mpTokens = (state.player.mpTokens || 0) - mpCost;
+    state.player.hcTokens = (state.player.hcTokens || 0) - hcCost;
+
+    toast(`Security Allocation Authorized`);
+    saveState();
+    renderAll();
+  }
+}
+
+function xpPerLevel() { return state.settings.xpPerLevel || 100; }
+
+function applyRewardBonuses(xp, gold, sp) {
+  let currentXp = state.player.xp + xp;
+  state.player.gold += gold;
+  state.player.skill += sp;
+
+  let leveledUp = false;
+  while (currentXp >= xpPerLevel()) {
+    currentXp -= xpPerLevel();
+    state.player.level += 1;
+    state.player.gold += state.settings.goldPerLevel;
+    state.player.skill += state.settings.spPerLevel;
+    leveledUp = true;
+  }
+  state.player.xp = currentXp;
+
+  if (leveledUp) startCelebration("MATRIX ARRAY EXPANDED", "INTELLIGENT TELEMETRY EVOLUTION STACK DEPLOYED");
+}
+
+/* ---------- Structural Input Parameter Mapping Modals ---------- */
+let activeModalKind = null;
+let activeModalId = null;
+
+function openCreateModal(kind) {
+  activeModalKind = kind;
+  activeModalId = null;
+
+  document.getElementById("modalTitle").textContent = `INITIALIZE NEW ${kind.toUpperCase()} INTERFACE`;
+  document.getElementById("inputLabel").value = "";
+  document.getElementById("modalDelete").style.display = "none";
+
+  const rowSide = document.getElementById("rowSideConfig");
+  const rowReward = document.getElementById("rowRewardConfig");
+  const rowPayouts = document.getElementById("rowQuestPayouts");
+  const fieldCategory = document.getElementById("fieldCategorySelect");
+
+  if (kind === "reward") {
+    rowSide.style.display = "none";
+    rowPayouts.style.display = "none";
+    fieldCategory.style.display = "none";
+    rowReward.style.display = "flex";
+    
+    document.getElementById("inputGoldCost").value = "10";
+    document.getElementById("inputSpCost").value = "0";
+    document.getElementById("inputHpCost").value = "0";
+    document.getElementById("inputMpCost").value = "0";
+    document.getElementById("inputHcCost").value = "0";
+  } else {
+    rowReward.style.display = "none";
+    rowPayouts.style.display = "flex";
+    fieldCategory.style.display = "flex";
+    document.getElementById("selectCategory").value = "Health";
+    document.getElementById("inputQuestXp").value = "20";
+    document.getElementById("inputQuestGold").value = "5";
+    document.getElementById("inputQuestSp").value = "0";
+
+    if (kind === "side") {
+      rowSide.style.display = "flex";
+      document.getElementById("selectFrequency").value = "Daily";
+      document.getElementById("inputMaxCompletions").value = "1";
+    } else {
+      rowSide.style.display = "none";
+    }
+  }
+  toggleModalOverlay(true);
+}
+
+function openEditModal(id, kind) {
+  activeModalKind = kind;
+  activeModalId = id;
+
+  document.getElementById("modalTitle").textContent = `RECONFIG ${kind.toUpperCase()} METADATA`;
+  document.getElementById("modalDelete").style.display = "block";
+
+  const rowSide = document.getElementById("rowSideConfig");
+  const rowReward = document.getElementById("rowRewardConfig");
+  const rowPayouts = document.getElementById("rowQuestPayouts");
+  const fieldCategory = document.getElementById("fieldCategorySelect");
+
+  if (kind === "reward") {
+    const r = state.rewards.find(x => x.id === id);
+    if (!r) return;
+    document.getElementById("inputLabel").value = r.label;
+    rowSide.style.display = "none";
+    rowPayouts.style.display = "none";
+    fieldCategory.style.display = "none";
+    rowReward.style.display = "flex";
+    
+    document.getElementById("inputGoldCost").value = r.goldCost || 0;
+    document.getElementById("inputSpCost").value = r.spCost || 0;
+    document.getElementById("inputHpCost").value = r.hpCost || 0;
+    document.getElementById("inputMpCost").value = r.mpCost || 0;
+    document.getElementById("inputHcCost").value = r.hcCost || 0;
+  } else {
+    const q = state.quests[kind].find(x => x.id === id);
+    if (!q) return;
+    document.getElementById("inputLabel").value = q.label;
+    rowReward.style.display = "none";
+    rowPayouts.style.display = "flex";
+    fieldCategory.style.display = "flex";
+    
+    document.getElementById("selectCategory").value = q.category || "Health";
+    document.getElementById("inputQuestXp").value = q.xpReward || 0;
+    document.getElementById("inputQuestGold").value = q.goldReward || 0;
+    document.getElementById("inputQuestSp").value = q.spReward || 0;
+
+    if (kind === "side") {
+      rowSide.style.display = "flex";
+      document.getElementById("selectFrequency").value = q.frequency || "Daily";
+      document.getElementById("inputMaxCompletions").value = q.maxCompletions || 1;
+    } else {
+      rowSide.style.display = "none";
+    }
+  }
+  toggleModalOverlay(true);
+}
+
+function toggleModalOverlay(show) {
+  const overlay = document.getElementById("modalOverlay");
+  if (show) {
+    overlay.classList.add("show");
+    overlay.style.display = "flex";
+  } else {
+    overlay.classList.remove("show");
+    setTimeout(() => { overlay.style.display = "none"; }, 150);
+  }
+}
+
+function saveModalData() {
+  const labelVal = document.getElementById("inputLabel").value.trim();
+  if (!labelVal) return toast("Descriptor required.");
+
+  if (activeModalId) {
+    if (activeModalKind === "reward") {
+      const r = state.rewards.find(x => x.id === activeModalId);
+      if (r) {
+        r.label = labelVal;
+        r.goldCost = Math.max(0, parseInt(document.getElementById("inputGoldCost").value) || 0);
+        r.spCost = Math.max(0, parseInt(document.getElementById("inputSpCost").value) || 0);
+        r.hpCost = Math.max(0, parseInt(document.getElementById("inputHpCost").value) || 0);
+        r.mpCost = Math.max(0, parseInt(document.getElementById("inputMpCost").value) || 0);
+        r.hcCost = Math.max(0, parseInt(document.getElementById("inputHcCost").value) || 0);
+      }
+    } else {
+      const q = state.quests[activeModalKind].find(x => x.id === activeModalId);
+      if (q) {
+        q.label = labelVal;
+        q.category = document.getElementById("selectCategory").value;
+        q.xpReward = Math.max(0, parseInt(document.getElementById("inputQuestXp").value) || 0);
+        q.goldReward = Math.max(0, parseInt(document.getElementById("inputQuestGold").value) || 0);
+        q.spReward = Math.max(0, parseInt(document.getElementById("inputQuestSp").value) || 0);
+        if (activeModalKind === "side") {
+          q.frequency = document.getElementById("selectFrequency").value;
+          q.maxCompletions = Math.max(1, parseInt(document.getElementById("inputMaxCompletions").value) || 1);
+        }
+      }
+    }
+    toast("Configuration Synchronized.");
+  } else {
+    const newId = "id_" + Math.random().toString(16).slice(2) + Date.now();
+    if (activeModalKind === "reward") {
+      state.rewards.push({
+        id: newId, label: labelVal,
+        goldCost: Math.max(0, parseInt(document.getElementById("inputGoldCost").value) || 0),
+        spCost: Math.max(0, parseInt(document.getElementById("inputSpCost").value) || 0),
+        hpCost: Math.max(0, parseInt(document.getElementById("inputHpCost").value) || 0),
+        mpCost: Math.max(0, parseInt(document.getElementById("inputMpCost").value) || 0),
+        hcCost: Math.max(0, parseInt(document.getElementById("inputHcCost").value) || 0)
+      });
+    } else {
+      const targetObj = { 
+        id: newId, label: labelVal,
+        category: document.getElementById("selectCategory").value,
+        xpReward: Math.max(0, parseInt(document.getElementById("inputQuestXp").value) || 0),
+        goldReward: Math.max(0, parseInt(document.getElementById("inputQuestGold").value) || 0),
+        spReward: Math.max(0, parseInt(document.getElementById("inputQuestSp").value) || 0)
+      };
+      if (activeModalKind === "side") {
+        targetObj.frequency = document.getElementById("selectFrequency").value;
+        targetObj.maxCompletions = Math.max(1, parseInt(document.getElementById("inputMaxCompletions").value) || 1);
+      }
+      state.quests[activeModalKind].push(targetObj);
+    }
+    toast("Object Instantiated.");
+  }
+
+  saveState();
+  toggleModalOverlay(false);
+  renderAll();
+}
+
+function deleteModalData() {
+  if (!activeModalId) return;
+  if (activeModalKind === "reward") {
+    state.rewards = state.rewards.filter(x => x.id !== activeModalId);
+  } else {
+    state.quests[activeModalKind] = state.quests[activeModalKind].filter(x => x.id !== activeModalId);
+  }
+  toast("Deallocated cleanly.");
+  saveState();
+  toggleModalOverlay(false);
+  renderAll();
+}
+
+/* ---------- Secure Counter Reset Mechanism Overrides ---------- */
+function initDangerZone() {
+  const wipeTrigger = document.getElementById("btnDangerWipe");
+  const confirmWindow = document.getElementById("confirmOverlay");
+  const confirmTextEl = document.getElementById("confirmInput");
+  const executeActionBtn = document.getElementById("confirmExecute");
+  const cancelActionBtn = document.getElementById("confirmCancel");
+  const closeWindowBtn = document.getElementById("confirmClose");
+
+  let countdownInterval = null;
+  let currentCountdown = 0;
+
+  const evaluationCheck = () => {
+    const textMatches = confirmTextEl.value.trim().toUpperCase() === "CONFIRM";
+    executeActionBtn.disabled = !textMatches || currentCountdown > 0;
+  };
+
+  wipeTrigger.addEventListener("click", () => {
+    confirmTextEl.value = "";
+    currentCountdown = 10;
+    executeActionBtn.disabled = true;
+    executeActionBtn.textContent = `Execute Truncation (${currentCountdown}s)`;
+    
+    confirmWindow.classList.add("show");
+    confirmWindow.style.display = "flex";
+
+    clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+      currentCountdown--;
+      if (currentCountdown <= 0) {
+        clearInterval(countdownInterval);
+        executeActionBtn.textContent = "Execute Clear";
+      } else {
+        executeActionBtn.textContent = `Execute Truncation (${currentCountdown}s)`;
+      }
+      evaluationCheck();
+    }, 1000);
+  });
+
+  confirmTextEl.addEventListener("input", evaluationCheck);
+
+  const closeWipeView = () => {
+    clearInterval(countdownInterval);
+    confirmWindow.classList.remove("show");
+    setTimeout(() => { confirmWindow.style.display = "none"; }, 150);
+  };
+
+  cancelActionBtn.addEventListener("click", closeWipeView);
+  closeWindowBtn.addEventListener("click", closeWipeView);
+
+  executeActionBtn.addEventListener("click", () => {
+    if (confirmTextEl.value.trim().toUpperCase() === "CONFIRM" && currentCountdown <= 0) {
+      localStorage.clear();
+      state = structuredClone(DEFAULT_STATE);
+      saveState();
+      closeWipeView();
+      renderAll();
+      toast("Cache Truncated Completely.");
+    }
+  });
+}
+
+/* ---------- Interface Control Tab Listeners ---------- */
+function initTabs() {
+  document.querySelectorAll(".tabs .tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".tabs .tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".views .view").forEach(v => v.classList.remove("active"));
+
+      tab.classList.add("active");
+      const targetView = document.getElementById(`view-${tab.dataset.view}`);
+      if (targetView) targetView.classList.add("active");
+    });
+  });
+
+  document.querySelectorAll("[data-action='openCreate']").forEach(btn => {
+    btn.addEventListener("click", () => openCreateModal(btn.dataset.kind));
+  });
+}
+
+function initForms() {
+  document.getElementById("modalClose").addEventListener("click", () => toggleModalOverlay(false));
+  document.getElementById("modalSave").addEventListener("click", saveModalData);
+  document.getElementById("modalDelete").addEventListener("click", deleteModalData);
+
+  ["setXpPerLevel", "setGoldPerLevel", "setSpPerLevel"].forEach(id => {
+    document.getElementById(id).addEventListener("change", saveSettingsForm);
+  });
+}
+
+function syncSettingsForm() {
+  document.getElementById("setXpPerLevel").value = state.settings.xpPerLevel;
+  document.getElementById("setGoldPerLevel").value = state.settings.goldPerLevel;
+  document.getElementById("setSpPerLevel").value = state.settings.spPerLevel;
+}
+
+function saveSettingsForm() {
+  state.settings.xpPerLevel = Math.max(10, parseInt(document.getElementById("setXpPerLevel").value) || 100);
+  state.settings.goldPerLevel = Math.max(0, parseInt(document.getElementById("setGoldPerLevel").value) || 0);
+  state.settings.spPerLevel = Math.max(0, parseInt(document.getElementById("setSpPerLevel").value) || 0);
+  saveState();
+  renderHUD();
+}
+
+/* ---------- Particles Grid Overlay Animation Core ---------- */
+function startCelebration(title, subtitle) {
   const el = document.getElementById("celebration");
   const wrap = document.getElementById("celebrateParticles");
-  if(!el || !wrap) return;
+  if (!el || !wrap) return;
 
-  // build particles (recreate each time for fresh randomness)
+  document.getElementById("txtCelebrationTitle").textContent = title;
+  document.getElementById("txtCelebrationSub").textContent = subtitle;
+
   wrap.innerHTML = "";
-  const count = 48;
-  for(let i=0;i<count;i++){
+  const count = 40;
+  for (let i = 0; i < count; i++) {
     const s = document.createElement("span");
-    const x0 = `${Math.random()*100}vw`;
-    const y0 = `${60 + Math.random()*35}vh`;
-    const x1 = `${Math.random()*100}vw`;
-    const y1 = `${-20 - Math.random()*30}vh`;
-    s.style.setProperty("--x0", x0);
-    s.style.setProperty("--y0", y0);
-    s.style.setProperty("--x1", x1);
-    s.style.setProperty("--y1", y1);
-    s.style.animationDelay = `${Math.random()*0.35}s`;
-    s.style.transform = "translate(var(--x0), var(--y0))";
+    s.style.setProperty("--x0", `${Math.random() * 100}vw`);
+    s.style.setProperty("--y0", `${70 + Math.random() * 20}vh`);
+    s.style.setProperty("--x1", `${Math.random() * 100}vw`);
+    s.style.setProperty("--y1", `${-10 - Math.random() * 20}vh`);
+    s.style.animationDelay = `${Math.random() * 0.2}s`;
     wrap.appendChild(s);
   }
 
   el.classList.add("show");
-  el.setAttribute("aria-hidden", "false");
-  setTimeout(() => {
-    el.classList.remove("show");
-    el.setAttribute("aria-hidden", "true");
-  }, 5000);
-}
-/* ---------- Leveling ---------- */
-function xpPerLevel(){
-  const base = 100;
-  const scale = 1.1;
-  return Math.floor(base * Math.pow(scale, Math.max(0, state.player.level - 1)));
-}
-function addXP(amount){
-  const gained = Number(amount || 0);
-  if(gained <= 0) return;
-  state.player.lifetimeXP += gained;
-
-  let total = state.player.xp + gained;
-  let leveled = false;
-  while(total >= xpPerLevel()){
-    total -= xpPerLevel();
-    state.player.level += 1;
-    state.player.gold += state.settings.goldPerLevel;
-    state.player.skill += state.settings.spPerLevel;
-    state.player.lifetimeGold += state.settings.goldPerLevel;
-    state.player.lifetimeSp += state.settings.spPerLevel;
-    leveled = true;
-    toast(`LEVEL UP! +${state.settings.goldPerLevel} GOLD • +${state.settings.spPerLevel} SP`);
-  }
-  state.player.xp = total;
-
-  if(leveled){
-    sfxLevelUp();
-    startCelebration();
-  }
-}
-function progressPct(){ return Math.min(state.player.xp / xpPerLevel(), 1); }
-
-/* ---------- Time helpers ---------- */
-function nowISO(){ return new Date().toISOString(); }
-function isSameDay(aISO, bISO){
-  const a = new Date(aISO), b = new Date(bISO);
-  return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-}
-function startOfWeekISO(d){
-  const date = new Date(d);
-  const day = date.getDay();
-  const diff = (day === 0 ? -6 : 1 - day);
-  date.setDate(date.getDate() + diff);
-  date.setHours(0,0,0,0);
-  return date.toISOString();
-}
-function isSameWeek(aISO, bISO){ return startOfWeekISO(aISO) === startOfWeekISO(bISO); }
-function msUntilMidnight(){
-  const d = new Date();
-  const next = new Date(d);
-  next.setHours(24,0,0,0);
-  return Math.max(0, next.getTime() - d.getTime());
-}
-function formatCountdown(ms){
-  const s = Math.floor(ms/1000);
-  const hh = String(Math.floor(s/3600)).padStart(2,"0");
-  const mm = String(Math.floor((s%3600)/60)).padStart(2,"0");
-  const ss = String(s%60).padStart(2,"0");
-  return `${hh}:${mm}:${ss}`;
-}
-function formatShortDate(iso){
-  try{
-    const d = new Date(iso);
-    return d.toLocaleDateString(undefined, {year:"numeric", month:"short", day:"2-digit"});
-  }catch{ return ""; }
+  setTimeout(() => { el.classList.remove("show"); }, 3500);
 }
 
-/* ---------- Completion rules ---------- */
-function completionsForQuestToday(questId){
-  const n = nowISO();
-  return state.completionLog.filter(x => x.questId===questId && isSameDay(x.dateISO, n)).length;
-}
-function completedThisWeek(questId){
-  const n = nowISO();
-  return state.completionLog.some(x => x.questId===questId && isSameWeek(x.dateISO, n));
-}
-function completedOnce(questId){ return state.completionLog.some(x => x.questId===questId); }
-function mainCompletionDate(questId){
-  const entry = state.completionLog.find(x => x.type==="main" && x.questId===questId);
-  return entry ? entry.dateISO : null;
-}
-function canComplete(quest){
-  if(!quest.active) return false;
-  if(quest.freq === "once") return !completedOnce(quest.id);
-  if(quest.freq === "weekly") return !completedThisWeek(quest.id);
-  const doneToday = completionsForQuestToday(quest.id);
-  const max = Number(quest.maxPerDay ?? 1);
-  return doneToday < max;
-}
-function questCooldownLabel(quest){
-  if(quest.freq === "daily"){
-    const doneToday = completionsForQuestToday(quest.id);
-    const max = Number(quest.maxPerDay ?? 1);
-    if(doneToday >= max) return `READY IN ${formatCountdown(msUntilMidnight())}`;
-  }
-  if(quest.freq === "weekly" && completedThisWeek(quest.id)) return "READY NEXT WEEK";
-  if(quest.freq === "once" && completedOnce(quest.id)) return "COMPLETED";
-  return "";
-}
+function completionsForInterval(questId, frequency) {
+  const start = new Date();
+  start.setHours(0,0,0,0);
 
-/* ---------- Achievements ---------- */
-function sideCompletionCount(questId){
-  return state.completionLog.filter(x => x.type==="side" && x.questId===questId).length;
-}
-function mainCompleted(questId){
-  return state.completionLog.some(x => x.type==="main" && x.questId===questId);
-}
-function sideBadgeTierIndex(count){ return Math.min(Math.floor(count/10), BADGE_TIERS.length-1); }
-function sideBadgeProgress(count){
-  const tierIdx = sideBadgeTierIndex(count);
-  const nextAt = (tierIdx+1)*10;
-  const into = count - (tierIdx*10);
-  const pct = Math.min(into/10, 1);
-  return {tierIdx, nextAt, into, pct};
-}
-
-/* ---------- Rewards ---------- */
-function canBuyReward(r){ return state.player.gold >= r.goldCost && state.player.skill >= r.spCost; }
-
-/* ---------- Actions ---------- */
-function completeQuest(type, questId){
-  const list = type==="side" ? state.quests.side : state.quests.main;
-  const q = list.find(x => x.id===questId);
-  if(!q || !canComplete(q)) return;
-
-  const xpEarned = Number(q.xp || 0);
-  state.completionLog.unshift({
-    id: cryptoId(),
-    questId: q.id,
-    questTitle: q.title,
-    type,
-    xpEarned,
-    dateISO: nowISO()
-  });
-  addXP(xpEarned);
-  saveState();
-  renderAll();
-  sfxComplete();
-  toast(`+${xpEarned} XP`);
-}
-function buyReward(rewardId){
-  const r = state.rewards.find(x => x.id===rewardId);
-  if(!r || !canBuyReward(r)) return;
-  state.player.gold -= r.goldCost;
-  state.player.skill -= r.spCost;
-  r.purchasedCount = (r.purchasedCount||0)+1;
-  saveState();
-  renderAll();
-  // Cha-ching + quick "Purchased" pop
-  sfxPurchase();
-  showPurchasePop("PURCHASED");
-  toast(`BOUGHT: ${r.title}`);
-}
-
-/* ---------- Modal system ---------- */
-const modal = { el:null, body:null, title:null, hint:null, deleteBtn:null, mode:null, kind:null, id:null };
-
-function openModal({mode, kind, id=null}){
-  modal.mode = mode; modal.kind = kind; modal.id = id;
-  modal.el.classList.add("show");
-  modal.el.setAttribute("aria-hidden", "false");
-
-  const isEdit = mode==="edit";
-  modal.deleteBtn.style.display = isEdit ? "" : "none";
-
-  const fields = buildFieldsFor(kind, isEdit ? getRecord(kind,id) : null);
-  modal.body.innerHTML = "";
-  fields.forEach(f => modal.body.appendChild(f));
-
-  modal.title.textContent = `${isEdit ? "Edit" : "Add"} ${kind==="reward" ? "Reward" : "Quest"}`;
-  modal.hint.textContent =
-    kind==="main" ? "Main quests are one-time. Completing gives PLATINUM." :
-    kind==="side" ? "Side quests repeat daily/weekly. Trophies upgrade every 10 completions." :
-    "Rewards can be purchased when affordable.";
-
-  const first = modal.body.querySelector("input, select");
-  if(first) setTimeout(() => first.focus(), 30);
-}
-function closeModal(){
-  modal.el.classList.remove("show");
-  modal.el.setAttribute("aria-hidden", "true");
-  modal.body.innerHTML = "";
-  modal.mode=null; modal.kind=null; modal.id=null;
-}
-function getRecord(kind,id){
-  if(kind==="side") return state.quests.side.find(x=>x.id===id);
-  if(kind==="main") return state.quests.main.find(x=>x.id===id);
-  if(kind==="reward") return state.rewards.find(x=>x.id===id);
-  return null;
-}
-function buildField({label,id,value="",inputmode=null,options=null,disabled=false}){
-  const wrap = document.createElement("div");
-  wrap.className="field";
-  const lab = document.createElement("label");
-  lab.htmlFor=id; lab.textContent=label;
-  wrap.appendChild(lab);
-
-  let el;
-  if(options){
-    el = document.createElement("select");
-    options.forEach(o=>{
-      const opt=document.createElement("option");
-      opt.value=o.value; opt.textContent=o.text;
-      if(String(o.value)===String(value)) opt.selected=true;
-      el.appendChild(opt);
-    });
-  } else {
-    el = document.createElement("input");
-    el.type = (inputmode === "numeric") ? "number" : "text";
-    el.value=value ?? "";
-    if(inputmode) el.inputMode=inputmode;
-    if(inputmode === "numeric"){ el.pattern = "[0-9]*"; }
-  }
-  el.id=id; el.disabled=!!disabled;
-  wrap.appendChild(el);
-  return wrap;
-}
-function buildFieldsFor(kind, rec){
-  const elems=[];
-  if(kind==="reward"){
-    elems.push(buildField({label:"Reward name", id:"f_title", value:rec?.title ?? ""}));
-    elems.push(buildField({label:"Gold cost", id:"f_gold", value:String(rec?.goldCost ?? 0), inputmode:"numeric"}));
-    elems.push(buildField({label:"SP cost", id:"f_sp", value:String(rec?.spCost ?? 0), inputmode:"numeric"}));
-    return elems;
-  }
-  elems.push(buildField({label:"Quest name", id:"f_title", value:rec?.title ?? ""}));
-  elems.push(buildField({label:"XP per completion", id:"f_xp", value:String(rec?.xp ?? 1), inputmode:"numeric"}));
-
-  if(kind==="side"){
-    const freq=rec?.freq ?? "daily";
-    // Segmented picker (to avoid native white select UI on mobile)
-    const segWrap = document.createElement("div");
-    segWrap.className = "field";
-    const lab = document.createElement("label");
-    lab.textContent = "Frequency";
-    segWrap.appendChild(lab);
-
-    const hidden = document.createElement("input");
-    hidden.type = "hidden";
-    hidden.id = "f_freq";
-    hidden.value = (freq==="weekly") ? "weekly" : "daily";
-    segWrap.appendChild(hidden);
-
-    const seg = document.createElement("div");
-    seg.className = "seg";
-
-    const btnDaily = document.createElement("button");
-    btnDaily.type = "button";
-    btnDaily.textContent = "DAILY";
-    const btnWeekly = document.createElement("button");
-    btnWeekly.type = "button";
-    btnWeekly.textContent = "WEEKLY";
-
-    const setSel = (val) => {
-      hidden.value = val;
-      btnDaily.classList.toggle("selected", val === "daily");
-      btnWeekly.classList.toggle("selected", val === "weekly");
-      const maxEl = document.getElementById("f_max");
-      if(maxEl) maxEl.disabled = (val === "weekly");
-    };
-
-    btnDaily.addEventListener("click", () => setSel("daily"));
-    btnWeekly.addEventListener("click", () => setSel("weekly"));
-
-    seg.appendChild(btnDaily);
-    seg.appendChild(btnWeekly);
-    segWrap.appendChild(seg);
-    elems.push(segWrap);
-
-    elems.push(buildField({label:"Max per day (daily only)", id:"f_max", value:String(rec?.maxPerDay ?? 1), inputmode:"numeric"}));
-    setTimeout(()=> setSel(hidden.value), 0);
-  }
-  return elems;
-}
-function toSafeInt(v, fallback){
-  const n=parseInt(String(v ?? "").replace(/[^0-9]/g,""),10);
-  return Number.isFinite(n) ? n : fallback;
-}
-function readModalValues(){
-  const title=document.getElementById("f_title")?.value?.trim();
-  if(!title) return {error:"NAME REQUIRED"};
-  const xp=toSafeInt(document.getElementById("f_xp")?.value, 1);
-
-  if(modal.kind==="reward"){
-    const gold=toSafeInt(document.getElementById("f_gold")?.value, 0);
-    const sp=toSafeInt(document.getElementById("f_sp")?.value, 0);
-    return {title, xp, gold, sp};
-  }
-  if(modal.kind==="side"){
-    const freq=document.getElementById("f_freq")?.value==="weekly" ? "weekly" : "daily";
-    let max=toSafeInt(document.getElementById("f_max")?.value, 1);
-    if(freq==="weekly") max=1;
-    return {title, xp, freq, max};
-  }
-  return {title, xp, freq:"once"};
-}
-function saveModal(){
-  const v=readModalValues();
-  if(v.error){ toast(v.error); return; }
-
-  if(modal.kind==="reward"){
-    if(modal.mode==="create"){
-      state.rewards.unshift({id:cryptoId(), title:v.title, goldCost:v.gold, spCost:v.sp, purchasedCount:0});
-      toast("REWARD ADDED");
-    } else {
-      const r=state.rewards.find(x=>x.id===modal.id);
-      if(r){ r.title=v.title; r.goldCost=v.gold; r.spCost=v.sp; toast("REWARD UPDATED"); }
-    }
-    saveState(); renderAll(); closeModal(); return;
+  if (frequency === "Weekly") {
+    const currentDay = start.getDay();
+    start.setDate(start.getDate() - currentDay);
+  } else if (frequency === "Monthly") {
+    start.setDate(1);
   }
 
-  if(modal.kind==="side"){
-    if(modal.mode==="create"){
-      state.quests.side.unshift({id:cryptoId(), title:v.title, xp:v.xp, freq:v.freq, maxPerDay:v.max, active:true});
-      toast("QUEST ADDED");
-    } else {
-      const q=state.quests.side.find(x=>x.id===modal.id);
-      if(q){ q.title=v.title; q.xp=v.xp; q.freq=v.freq; q.maxPerDay=v.max; toast("QUEST UPDATED"); }
-    }
-    saveState(); renderAll(); closeModal(); return;
+  return state.completionLog.filter(x => x.questId === questId && new Date(x.dateISO) >= start).length;
+}
+
+function findLastIndex(array, predicate) {
+  for (let i = array.length - 1; i >= 0; i--) {
+    if (predicate(array[i])) return i;
   }
-
-  if(modal.kind==="main"){
-    if(modal.mode==="create"){
-      state.quests.main.unshift({id:cryptoId(), title:v.title, xp:v.xp, freq:"once", active:true});
-      toast("QUEST ADDED");
-    } else {
-      const q=state.quests.main.find(x=>x.id===modal.id);
-      if(q){ q.title=v.title; q.xp=v.xp; toast("QUEST UPDATED"); }
-    }
-    saveState(); renderAll(); closeModal(); return;
-  }
-}
-function deleteModalRecord(){
-  if(modal.mode!=="edit") return;
-  if(modal.kind==="reward"){
-    state.rewards = state.rewards.filter(x=>x.id!==modal.id);
-    toast("REWARD DELETED");
-  } else if(modal.kind==="side"){
-    state.quests.side = state.quests.side.filter(x=>x.id!==modal.id);
-    toast("QUEST DELETED");
-  } else if(modal.kind==="main"){
-    state.quests.main = state.quests.main.filter(x=>x.id!==modal.id);
-    toast("QUEST DELETED");
-  }
-  saveState(); renderAll(); closeModal();
+  return -1;
 }
 
-
-/* ---------- Theme ---------- */
-function applyTheme(){
-  const t = state?.settings?.theme || "space";
-  document.body.setAttribute("data-theme", t);
-}
-
-/* ---------- Confirm reset ---------- */
-function openConfirmReset(){
-  const ov = document.getElementById("confirmOverlay");
-  const input = document.getElementById("confirmInput");
-  const btn = document.getElementById("confirmDoReset");
-  if(!ov || !input || !btn) return;
-  ov.style.display = "block";
-  ov.setAttribute("aria-hidden","false");
-  input.value = "";
-  btn.disabled = true;
-  setTimeout(()=>{ input.focus(); }, 50);
-}
-function closeConfirmReset(){
-  const ov = document.getElementById("confirmOverlay");
-  if(!ov) return;
-  ov.style.display = "none";
-  ov.setAttribute("aria-hidden","true");
-}
-/* ---------- Rendering ---------- */
-const $ = (sel) => document.querySelector(sel);
-const GEAR_SVG = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" stroke-width="2"/>
-  <path d="M19.4 15a7.9 7.9 0 0 0 .1-1 7.9 7.9 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.5a7.9 7.9 0 0 0-.1 1c0 .3 0 .7.1 1l-2 1.5 2 3.4 2.4-1c.5.4 1.1.7 1.7 1l.4 2.6h5.8l.4-2.6c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.4-2-1.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-</svg>`;
-
-function renderHeader(){
-  $("#levelLine").textContent = `LEVEL ${state.player.level} • ${state.player.xp}/${xpPerLevel()} XP`;
-  $("#gold").textContent = state.player.gold;
-  $("#skill").textContent = state.player.skill;
-
-  const pct = Math.round(progressPct()*100);
-  $("#xpFill").style.width = `${pct}%`;
-  $("#xpPct").textContent = `${pct}%`;
-
-  $("#lifetimeXp").textContent = state.player.lifetimeXP;
-  const lg = document.getElementById("lifetimeGold");
-  const ls = document.getElementById("lifetimeSp");
-  if(lg) lg.textContent = state.player.lifetimeGold;
-  if(ls) ls.textContent = state.player.lifetimeSp;
-
-  const today = nowISO();
-  const todayXp = state.completionLog.filter(x => isSameDay(x.dateISO, today))
-    .reduce((s,x) => s + (Number(x.xpEarned)||0), 0);
-  $("#todayXp").textContent = `${todayXp} XP`;
-}
-
-function renderQuestList(type){
-  const root = type==="side" ? $("#sideList") : $("#mainList");
-  const list = type==="side" ? state.quests.side : state.quests.main;
-  root.innerHTML = "";
-
-  if(list.length === 0){
-    const empty = document.createElement("div");
-    empty.className = "item";
-    empty.innerHTML = `<div class="meta"><div class="name">NO ${type==="side" ? "SIDE" : "MAIN"} QUESTS YET</div><div class="desc">TAP + ADD TO CREATE ONE</div></div>`;
-    root.appendChild(empty);
-    return;
-  }
-
-  list.filter(q => q.active).forEach(q => {
-    const disabled = !canComplete(q);
-    const meta = [];
-    meta.push(`${q.xp} XP`);
-    if(q.freq === "weekly") meta.push("1/WEEK");
-    if(q.freq === "daily") meta.push(`MAX/DAY: ${q.maxPerDay ?? 1}`);
-    if(q.freq === "once") meta.push("ONE-TIME");
-
-    if(type==="side" && q.freq==="daily"){
-      const doneToday = completionsForQuestToday(q.id);
-      meta.push(`TODAY: ${doneToday}/${q.maxPerDay ?? 1}`);
-    }
-    if(type==="side" && q.freq==="weekly"){
-      meta.push(completedThisWeek(q.id) ? "DONE THIS WEEK" : "READY");
-    }
-    if(type==="main"){
-      const done = mainCompleted(q.id);
-      meta.push(done ? "COMPLETED" : "READY");
-      const date = mainCompletionDate(q.id);
-      if(done && date) meta.push(`DATE: ${formatShortDate(date)}`);
-    }
-
-    const cooldown = questCooldownLabel(q);
-
-    let btnClass = "btn btnComplete available";
-    let btnText = "COMPLETE";
-
-    if(type==="main" && mainCompleted(q.id)){
-      btnClass = "btn btnComplete done";
-      btnText = "COMPLETED";
-    } else if(type==="side"){
-      if(q.freq==="weekly" && completedThisWeek(q.id)){
-        btnClass = "btn btnComplete cooldown";
-        btnText = "COMPLETED";
-      } else if(q.freq==="daily"){
-        const doneToday = completionsForQuestToday(q.id);
-        const max = Number(q.maxPerDay ?? 1);
-        if(doneToday >= max){
-          btnClass = "btn btnComplete cooldown";
-          btnText = cooldown || "READY IN 00:00:00";
-        }
-      }
-    }
-
-    const el = document.createElement("div");
-    el.className = "item";
-    el.innerHTML = `
-      <div class="meta">
-        <div class="name">${escapeHtml(q.title)}</div>
-        <div class="desc">${escapeHtml(meta.join(" • "))}${cooldown ? ` • ${escapeHtml(cooldown)}` : ""}</div>
-      </div>
-      <div class="rowBtns">
-        <button class="${btnClass}" ${disabled ? "disabled" : ""} data-action="complete" data-type="${type}" data-id="${q.id}">${btnText}</button>
-        <button class="iconBtn" data-action="openEdit" data-kind="${type}" data-id="${q.id}" aria-label="Edit">${GEAR_SVG}</button>
-      </div>
-    `;
-    root.appendChild(el);
-  });
-}
-
-function renderRewards(){
-  const root = $("#rewardList");
-  root.innerHTML = "";
-
-  if(state.rewards.length === 0){
-    const empty = document.createElement("div");
-    empty.className = "item";
-    empty.innerHTML = `<div class="meta"><div class="name">NO REWARDS YET</div><div class="desc">TAP + ADD TO CREATE ONE</div></div>`;
-    root.appendChild(empty);
-    return;
-  }
-
-  state.rewards.forEach(r => {
-    const ok = canBuyReward(r);
-    const el = document.createElement("div");
-    el.className = "item";
-    el.innerHTML = `
-      <div class="meta">
-        <div class="name">${escapeHtml(r.title)}</div>
-        <div class="desc">COST: ${r.goldCost} GOLD • ${r.spCost} SP • OWNED: ${r.purchasedCount || 0}</div>
-      </div>
-      <div class="rowBtns">
-        <button class="btn" ${ok ? "" : "disabled"} data-action="buy" data-id="${r.id}">BUY</button>
-        <button class="iconBtn" data-action="openEdit" data-kind="reward" data-id="${r.id}" aria-label="Edit">${GEAR_SVG}</button>
-      </div>
-    `;
-    root.appendChild(el);
-  });
-}
-
-function renderAchievements(){
-  const root = $("#badgeList");
-  root.innerHTML = "";
-
-  const side = state.quests.side.filter(q=>q.active);
-  if(side.length === 0){
-    const empty = document.createElement("div");
-    empty.className = "item";
-    empty.innerHTML = `<div class="meta"><div class="name">NO SIDE TROPHIES YET</div><div class="desc">COMPLETE SIDE QUESTS TO UNLOCK TROPHIES</div></div>`;
-    root.appendChild(empty);
-  } else {
-    side.forEach(q => {
-      const count = sideCompletionCount(q.id);
-      const p = sideBadgeProgress(count);
-      const tier = BADGE_TIERS[p.tierIdx];
-      const nextLabel = p.tierIdx >= BADGE_TIERS.length-1 ? "MAX TIER" : `NEXT IN ${p.nextAt - count}`;
-      const pct = Math.round(p.pct * 100);
-
-      const el = document.createElement("div");
-      el.className = "trophyCard";
-      el.setAttribute("data-tier", tier.name.toLowerCase());
-      el.style.setProperty("--tier", tier.color);
-      el.innerHTML = `
-        <div class="trophyInner">
-          <div class="trophyIcon">
-            <div class="sparkles"><span></span><span></span><span></span><span></span></div>
-            <svg class="trophySvg" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <defs>
-    <linearGradient id="g" x1="12" y1="10" x2="52" y2="54">
-      <stop offset="0" stop-color="var(--tierHi)"/>
-      <stop offset="0.55" stop-color="var(--tier)"/>
-      <stop offset="1" stop-color="var(--tierLo)"/>
-    </linearGradient>
-    <linearGradient id="shine" x1="20" y1="14" x2="44" y2="50">
-      <stop offset="0" stop-color="rgba(255,255,255,.80)"/>
-      <stop offset="1" stop-color="rgba(255,255,255,0)"/>
-    </linearGradient>
-  </defs>
-  <path d="M20 10h24v10c0 9-6 16-12 16S20 29 20 20V10Z" fill="url(#g)" stroke="rgba(255,255,255,.28)" stroke-width="2" />
-  <path d="M23 14h6c0 9-2 14-6 16" stroke="url(#shine)" stroke-width="4" stroke-linecap="round" opacity=".55"/>
-  <path d="M44 12h10v6c0 8-6 14-14 14" stroke="url(#g)" stroke-width="4" stroke-linecap="round"/>
-  <path d="M20 12H10v6c0 8 6 14 14 14" stroke="url(#g)" stroke-width="4" stroke-linecap="round"/>
-  <path d="M28 36h8v6c0 3 2 6 6 6H22c4 0 6-3 6-6v-6Z" fill="url(#g)" stroke="rgba(255,255,255,.22)" stroke-width="2"/>
-  <path d="M18 50h28v6H18v-6Z" fill="url(#g)" stroke="rgba(255,255,255,.22)" stroke-width="2"/>
-</svg>
-          </div>
-          <div class="trophyMeta">
-            <div class="trophyTitle">${escapeHtml(q.title)}</div>
-            <div class="trophyTierLine">
-              <div class="tierPill"><b>${tier.name}</b></div>
-              <div>COMPLETIONS: <b>${count}</b></div>
-              <div>${nextLabel}</div>
-            </div>
-            <div class="trophySub">UPGRADES EVERY 10 COMPLETIONS</div>
-            <div class="trophyProg"><div class="trophyProgFill" style="width:${pct}%"></div></div>
-          </div>
-        </div>
-      `;
-      root.appendChild(el);
-    });
-  }
-
-  const mainRoot = $("#mainBadgeList");
-  mainRoot.innerHTML = "";
-  const main = state.quests.main.filter(q=>q.active);
-  if(main.length === 0){
-    const empty = document.createElement("div");
-    empty.className = "item";
-    empty.innerHTML = `<div class="meta"><div class="name">NO MAIN TROPHIES YET</div><div class="desc">COMPLETE MAIN QUESTS TO UNLOCK PLATINUM</div></div>`;
-    mainRoot.appendChild(empty);
-  } else {
-    main.forEach(q => {
-      const done = mainCompleted(q.id);
-      const date = mainCompletionDate(q.id);
-      const el = document.createElement("div");
-      el.className = "trophyCard";
-      el.setAttribute("data-tier", "platinum");
-      el.style.setProperty("--tier", PLATINUM.color);
-      el.innerHTML = `
-        <div class="trophyInner">
-          <div class="trophyIcon">
-            <div class="sparkles"><span></span><span></span><span></span><span></span></div>
-            <div style="opacity:${done ? "1" : ".25"}"><svg class="trophySvg" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <defs>
-    <linearGradient id="g" x1="12" y1="10" x2="52" y2="54">
-      <stop offset="0" stop-color="var(--tierHi)"/>
-      <stop offset="0.55" stop-color="var(--tier)"/>
-      <stop offset="1" stop-color="var(--tierLo)"/>
-    </linearGradient>
-    <linearGradient id="shine" x1="20" y1="14" x2="44" y2="50">
-      <stop offset="0" stop-color="rgba(255,255,255,.80)"/>
-      <stop offset="1" stop-color="rgba(255,255,255,0)"/>
-    </linearGradient>
-  </defs>
-  <path d="M20 10h24v10c0 9-6 16-12 16S20 29 20 20V10Z" fill="url(#g)" stroke="rgba(255,255,255,.28)" stroke-width="2" />
-  <path d="M23 14h6c0 9-2 14-6 16" stroke="url(#shine)" stroke-width="4" stroke-linecap="round" opacity=".55"/>
-  <path d="M44 12h10v6c0 8-6 14-14 14" stroke="url(#g)" stroke-width="4" stroke-linecap="round"/>
-  <path d="M20 12H10v6c0 8 6 14 14 14" stroke="url(#g)" stroke-width="4" stroke-linecap="round"/>
-  <path d="M28 36h8v6c0 3 2 6 6 6H22c4 0 6-3 6-6v-6Z" fill="url(#g)" stroke="rgba(255,255,255,.22)" stroke-width="2"/>
-  <path d="M18 50h28v6H18v-6Z" fill="url(#g)" stroke="rgba(255,255,255,.22)" stroke-width="2"/>
-</svg></div>
-          </div>
-          <div class="trophyMeta">
-            <div class="trophyTitle">${escapeHtml(q.title)}</div>
-            <div class="trophyTierLine">
-              <div class="tierPill"><b>PLATINUM</b></div>
-              <div>STATUS: <b>${done ? "COMPLETED" : "LOCKED"}</b></div>
-              ${done && date ? `<div>DATE: <b>${formatShortDate(date)}</b></div>` : ""}
-            </div>
-            <div class="trophySub">${done ? "TROPHY UNLOCKED" : "COMPLETE THIS MAIN QUEST TO UNLOCK"}</div>
-          </div>
-        </div>
-      `;
-      mainRoot.appendChild(el);
-    });
-  }
-}
-
-/* ---------- Navigation / Events ---------- */
-function wireTabs(){
-  document.querySelectorAll(".tab").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
-      document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-      btn.classList.add("active");
-      document.querySelector(`#view-${btn.dataset.view}`).classList.add("active");
-    });
-  });
-}
-function modalEl(){ return document.getElementById("modal"); }
-function initModal(){
-  modal.el = modalEl();
-  modal.body = document.getElementById("modalBody");
-  modal.title = document.getElementById("modalTitle");
-  modal.hint = document.getElementById("modalHint");
-  modal.deleteBtn = document.getElementById("modalDelete");
-}
-function wireEvents(){
-  document.body.addEventListener("click", (e) => {
-    const btn = e.target.closest?.("[data-action]");
-    if(btn && state.settings.sfxOn) ensureAudio();
-
-    if(!(btn instanceof HTMLElement)) return;
-    const action = btn.dataset.action;
-    if(action === "complete") completeQuest(btn.dataset.type, btn.dataset.id);
-    else if(action === "buy") buyReward(btn.dataset.id);
-    else if(action === "openEdit") openModal({mode:"edit", kind: btn.dataset.kind, id: btn.dataset.id});
-    else if(action === "openCreate") openModal({mode:"create", kind: btn.dataset.kind});
-    else if(action === "closeModal") closeModal();
-  });
-
-  document.getElementById("modalSave").addEventListener("click", saveModal);
-  document.getElementById("modalDelete").addEventListener("click", deleteModalRecord);
-
-  document.getElementById("saveSettings").addEventListener("click", () => {
-    state.settings.goldPerLevel = toSafeInt(document.getElementById("goldPerLevel").value, 20);
-    state.settings.spPerLevel = toSafeInt(document.getElementById("spPerLevel").value, 1);
-    saveState(); renderAll(); toast("SETTINGS SAVED");
-  });
-  document.getElementById("toggleSfx").addEventListener("click", () => {
-    state.settings.sfxOn = !state.settings.sfxOn;
-    saveState(); renderSettings();
-    toast(state.settings.sfxOn ? "SFX ON" : "SFX OFF");
-    if(state.settings.sfxOn){ ensureAudio(); playTone(660, 80, "sine", 0.04); }
-
-  });
-
-  const toggleMusicBtn = document.getElementById("toggleMusic");
-  if(toggleMusicBtn){
-    toggleMusicBtn.addEventListener("click", () => {
-      state.settings.musicOn = !state.settings.musicOn;
-      saveState(); renderSettings();
-      toast(state.settings.musicOn ? "MUSIC ON" : "MUSIC OFF");
-      ensureAudio();
-      if(state.settings.musicOn){
-        startMusicIfNeeded();
-      }
-      syncAudioToggles();
-    });
-  }
-
-  const themeSelect = document.getElementById("themeSelect");
-  if(themeSelect){
-    themeSelect.addEventListener("change", () => {
-      state.settings.theme = themeSelect.value;
-      saveState();
-      applyTheme();
-    });
-  }
-
-  const musicSelect = document.getElementById("musicSelect");
-  if(musicSelect){
-    musicSelect.addEventListener("change", () => {
-      state.settings.musicTrack = musicSelect.value;
-      saveState();
-      startMusicIfNeeded();
-      renderSettings();
-    });
-  }
-
-
-  window.addEventListener("keydown", (e) => {
-    if(e.key === "Escape" && modalEl().classList.contains("show")) closeModal();
-  });
-
-  // Confirm reset overlay wiring
-  const cClose = document.getElementById("confirmClose");
-  const cCancel = document.getElementById("confirmCancel");
-  const cInput = document.getElementById("confirmInput");
-  const cDo = document.getElementById("confirmDoReset");
-  const cOv = document.getElementById("confirmOverlay");
-  if(cClose) cClose.addEventListener("click", closeConfirmReset);
-  if(cCancel) cCancel.addEventListener("click", closeConfirmReset);
-  if(cOv) cOv.addEventListener("click", (e)=>{ if(e.target === cOv) closeConfirmReset(); });
-  if(cInput && cDo){
-    cInput.addEventListener("input", ()=>{
-      cDo.disabled = (cInput.value.trim().toUpperCase() !== "CONFIRM");
-    });
-  }
-  if(cDo){
-    cDo.addEventListener("click", ()=>{
-      if(cDo.disabled) return;
-
-      // Hard wipe + fresh defaults
-      wipeAllUserData();
-      stopBgm();
-      stopMp3();
-
-      closeConfirmReset();
-      // Full reload ensures a truly clean slate (no lingering in-memory state).
-      location.reload();
-    });
-  }
-
-}
-
-/* ---------- Rendering continued ---------- */
-function renderSettings(){
-  document.getElementById("xpPerLevel").value = xpPerLevel();
-  document.getElementById("goldPerLevel").value = String(state.settings.goldPerLevel);
-  document.getElementById("spPerLevel").value = String(state.settings.spPerLevel);
-  document.getElementById("toggleSfx").textContent = state.settings.sfxOn ? "ON" : "OFF";
-  const tm = document.getElementById("toggleMusic");
-  if(tm) tm.textContent = state.settings.musicOn ? "ON" : "OFF";
-
-  // Theme select
-  const themeSelect = document.getElementById("themeSelect");
-  if(themeSelect){
-    if(themeSelect.options.length !== THEMES.length){
-      themeSelect.innerHTML = "";
-      THEMES.forEach(t => {
-        const opt = document.createElement("option");
-        opt.value = t.id;
-        opt.textContent = t.label.toUpperCase();
-        themeSelect.appendChild(opt);
-      });
-    }
-    themeSelect.value = state.settings.theme;
-  }
-
-  // Music select
-  const musicSelect = document.getElementById("musicSelect");
-  if(musicSelect){
-    musicSelect.innerHTML = "";
-    musicCatalog.forEach(m => {
-      const opt = document.createElement("option");
-      opt.value = m.id;
-      opt.textContent = m.name.toUpperCase();
-      musicSelect.appendChild(opt);
-    });
-    if(!musicCatalog.some(m => m.id === state.settings.musicTrack)){
-      state.settings.musicTrack = musicCatalog[0]?.id || "builtin";
-      saveState();
-    }
-    musicSelect.value = state.settings.musicTrack;
-  }
-
-  syncAudioToggles();
-}
-function renderAll(){
-  applyTheme();
-  renderHeader();
-  renderQuestList("side");
-  renderQuestList("main");
-  renderRewards();
-  renderAchievements();
-  renderSettings();
-}
-
-/* ---------- Tick timers ---------- */
-let tickHandle = null;
-function startTick(){
-  if(tickHandle) return;
-  tickHandle = setInterval(() => {
-    renderQuestList("side");
-  }, 1000);
-}
-
-/* ---------- Toast ---------- */
-let toastTimer = null;
-function toast(msg){
+function toast(msg) {
   const el = document.getElementById("toast");
-  if(!el) return;
+  if (!el) return;
   el.textContent = msg;
   el.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), 1600);
+  clearTimeout(window.toastTimer);
+  window.toastTimer = setTimeout(() => el.classList.remove("show"), 1500);
 }
-
-function showPurchasePop(text="PURCHASED"){
-  const pop = document.getElementById("purchasePop");
-  const t = document.getElementById("purchasePopText");
-  if(!pop || !t) return;
-  t.textContent = text;
-  pop.classList.remove("show");
-  // force reflow to restart animation
-  void pop.offsetWidth;
-  pop.classList.add("show");
-  pop.setAttribute("aria-hidden","false");
-  setTimeout(()=>{
-    pop.classList.remove("show");
-    pop.setAttribute("aria-hidden","true");
-  }, 1150);
-}
-
-/* ---------- Helpers ---------- */
-function cryptoId(){ return Math.random().toString(16).slice(2) + Date.now().toString(16); }
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, m => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-  }[m]));
-}
-
-/* ---------- Boot ---------- */
-async function boot(){
-  initModal();
-  saveState(); // ensure key exists
-  wireTabs();
-  wireEvents();
-  await loadMusicCatalog();
-  bindFirstInteractionAudio();
-  bindGlobalClickSfx();
-  renderAll();
-  startTick();
-}
-boot();
