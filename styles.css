@@ -71,13 +71,14 @@ input::-webkit-inner-spin-button {
 }
 input[type=number] { -moz-appearance: textfield; }
 
-/* Top Header Area */
+/* Top Header Area - Updated */
 .top-centered {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 22px 16px;
+  /* Add safe-area-inset-top to the existing padding */
+  padding: calc(22px + env(safe-area-inset-top, 0px)) 16px 22px 16px;
   background: var(--navBg);
   border-bottom: 2px solid var(--line);
   backdrop-filter: blur(20px);
