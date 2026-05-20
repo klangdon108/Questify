@@ -23,9 +23,13 @@
   </div>
 
   <header class="top-centered" id="hud-header">
-    <div class="brand-centered">
-      <div class="title animate-text-glow">Questify</div>
-      <div class="sub" id="levelLine">Level 1 • 0/100 XP</div>
+    <div class="header-toolbar">
+      <button class="iconBtn header-icon" id="btnOpenSettings" aria-label="Settings" style="font-size: 1.4rem;">⚙️</button>
+      <div class="brand-centered">
+        <div class="title animate-text-glow">Questify</div>
+        <div class="sub" id="levelLine">Level 1 • 0/100 XP</div>
+      </div>
+      <button class="iconBtn header-icon" id="btnOpenRewards" aria-label="Rewards" style="font-size: 1.4rem;">🛒</button>
     </div>
     
     <div class="barWrap character-xp-bar" aria-label="XP progress">
@@ -36,7 +40,6 @@
   </header>
 
   <section class="resource-hud" id="hud-resources">
-
     <div class="res-node hp-node">
       <span class="res-icon">❤️</span>
       <div class="res-meta">
@@ -58,13 +61,13 @@
         <span class="res-label">HONEY</span>
       </div>
     </div>
-    </div>
     <div class="res-node sp-node">
       <span class="res-icon">✨</span>
       <div class="res-meta">
         <span class="res-val" id="skill">0</span>
         <span class="res-label">SKILL POINTS</span>
       </div>
+    </div>
   </section>
 
   <section class="card hud complex-glow" id="hud-matrix">
@@ -84,14 +87,7 @@
     </div>
   </section>
 
-  <nav class="tabs" aria-label="Navigation tabs" id="hud-tabs">
-    <button class="tab active" data-view="quests" id="tab-quests">Quests List</button>
-    <button class="tab" data-view="rewards" id="tab-rewards">Rewards Store</button>
-    <button class="tab" data-view="settings" id="tab-settings">App Settings</button>
-  </nav>
-
   <main class="viewport">
-    
     <div id="view-quests" class="view-panel active">
       <div class="section-top">
         <h2 class="panelTitle">Your Quests</h2>
@@ -108,27 +104,44 @@
         <div id="mainList" class="scrollList"></div>
       </div>
     </div>
+  </main>
 
-    <div id="view-rewards" class="view-panel">
-      <div class="section-top">
-        <h2 class="panelTitle">Rewards Shop</h2>
-        <button class="btn btnHeader" id="btnCreateReward">Add New Reward</button>
+  <div id="drawerRewardsOverlay" class="drawerOverlay" aria-hidden="true">
+    <div class="drawer" role="dialog" aria-labelledby="rewardsTitle">
+      <div class="drawerTop">
+        <h2 id="rewardsTitle">Rewards Shop</h2>
+        <button class="iconBtn" id="drawerRewardsClose" aria-label="Close Rewards">✕</button>
       </div>
-      <div id="rewardList" class="scrollList" style="margin-top: 16px;"></div>
+<div id="shopResourceCounter" style="display:flex; justify-content:space-around; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; margin: 10px 0; font-size: 0.8rem; color: var(--muted);">
+  <span>❤️ <span id="shopHp">0</span></span>
+  <span>🪙 <span id="shopGold">0</span></span>
+  <span>🍯 <span id="shopHc">0</span></span>
+  <span>✨ <span id="shopSp">0</span></span>
+</div>
+      <div class="drawerBody">
+        <button class="btn btnHeader" id="btnCreateReward" style="width: 100%;">Add New Reward</button>
+        <div id="rewardList" class="scrollList" style="margin-top: 16px;"></div>
 
-      <div class="history-container" style="margin-top: 40px; padding-top: 20px; border-top: 1px dashed var(--line);">
-        <button class="btn btnGhost" id="btnToggleHistory" style="width:100%;">
-          📊 View Bought Rewards History
-        </button>
-        <div id="historyLogPanel" class="card" style="display:none; margin-top:15px; padding:16px; background: rgba(0, 10, 30, 0.85);">
-          <div class="panelTitle" style="font-size: 0.85rem; color: var(--muted); margin-bottom: 12px;">Past History Logs</div>
-          <div id="historyLogList" style="display:flex; flex-direction:column; gap:8px; max-height:250px; overflow-y:auto; font-size:0.9rem;"></div>
+        <div class="history-container" style="margin-top: 40px; padding-top: 20px; border-top: 1px dashed var(--line);">
+          <button class="btn btnGhost" id="btnToggleHistory" style="width:100%;">
+            📊 View Bought Rewards History
+          </button>
+          <div id="historyLogPanel" class="card" style="display:none; margin-top:15px; padding:16px; background: rgba(0, 10, 30, 0.85); width: 100%; max-width: 100%; box-sizing: border-box;">
+            <div class="panelTitle" style="font-size: 0.85rem; color: var(--muted); margin-bottom: 12px;">Past History Logs</div>
+            <div id="historyLogList" style="display:flex; flex-direction:column; gap:8px; max-height:250px; overflow-y:auto; font-size:0.9rem;"></div>
+          </div>
         </div>
       </div>
     </div>
+  </div>
 
-    <div id="view-settings" class="view-panel">
-      <div class="card" style="margin: 0;">
+  <div id="drawerSettingsOverlay" class="drawerOverlay" aria-hidden="true">
+    <div class="drawer" role="dialog" aria-labelledby="settingsTitle">
+      <div class="drawerTop">
+        <h2 id="settingsTitle">App Settings</h2>
+        <button class="iconBtn" id="drawerSettingsClose" aria-label="Close Settings">✕</button>
+      </div>
+      <div class="drawerBody">
         <form id="settingsForm" style="display:flex; flex-direction:column; gap:16px;">
           <div class="form-grid">
             <div class="field">
@@ -147,12 +160,12 @@
 
         <div class="danger-zone-wrapper" style="margin-top:40px; border-top: 2px solid #ef4444; padding-top:20px;">
           <h3 style="color:#ef4444; font-family:var(--fontHud); margin-top:0; font-size:1.1rem; text-transform: uppercase; letter-spacing: 0.04em;">Danger Zone</h3>
-          <p class="hint" style="margin-top:4px; margin-bottom:14px;">This button deletes all your scores, points, and items permanently.</p>
-          <button class="btn btnGhost" id="btnDangerWipe" style="border-color:#ef4444; color:#ef4444;">Delete All Game Progress</button>
+          <p class="hint" style="margin-top:4px; margin-bottom:14px; color: var(--muted); font-size: 0.9rem;">This button deletes all your scores, points, and items permanently.</p>
+          <button class="btn btnGhost" id="btnDangerWipe" style="border-color:#ef4444; color:#ef4444; width: 100%;">Delete All Game Progress</button>
         </div>
       </div>
     </div>
-  </main>
+  </div>
 
   <div id="questModal" class="modalOverlay" aria-hidden="true" style="display:none;">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="questModalTitle">
@@ -226,7 +239,8 @@
         <button class="iconBtn" id="rewardModalClose" aria-label="Close">✕</button>
       </div>
      <form id="rewardForm" class="modalBody">
-        <input type="hidden" id="rewardId" /> <div class="field">
+        <input type="hidden" id="rewardId" /> 
+        <div class="field">
           <label for="rewardLabel">Reward Name</label>
           <input id="rewardLabel" type="text" placeholder="E.g., Eat a slice of cake..." required />
         </div>

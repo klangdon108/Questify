@@ -1,4 +1,4 @@
-/* Questify - Complete Fixed Version */
+/* Questify - Mobile-Optimized Fixed Version */
 
 const GAME_STORAGE_KEY = "questify.simple_rpg";
 
@@ -22,7 +22,6 @@ const STARTING_GAME_STATE = {
 
 let gameState = loadGameData();
 
-// Helper to safely attach listeners without crashing the app
 function safeListen(id, event, callback) {
   const el = document.getElementById(id);
   if (el) {
@@ -52,7 +51,7 @@ function saveGameData() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  setupTabs();
+  setupUIControls();
   setupForms();
   setupResetButton();
   refreshScreen();
@@ -70,14 +69,10 @@ function startCountdownTicker() {
       const questId = el.dataset.questId;
       const frequency = el.dataset.frequency;
       const maxCompletions = parseInt(el.dataset.maxCompletions) || 1;
-      // Build a minimal quest object for getResetCountdown
       const q = { id: questId, frequency, maxCompletions };
       const text = getResetCountdown(q);
       el.textContent = text || "";
-      // If countdown expired, trigger a full refresh so the quest unlocks
-      if (!text) {
-        refreshScreen();
-      }
+      if (!text) refreshScreen();
     });
   }, 1000);
 }
@@ -128,13 +123,11 @@ function updatePlayerStats() {
   if (fillHoneydew) fillHoneydew.style.width = `${gameState.player.honeydewXp}%`;
 }
 
-/* ---------- Reset Countdown Helper ---------- */
 function getResetCountdown(quest) {
   const now = new Date();
   const frequency = quest.frequency || "Daily";
   const maxTimes = quest.maxCompletions || 1;
 
-  // Find the most recent completion for this quest
   const logs = gameState.completionLog
     .filter(x => x.questId === quest.id)
     .map(x => new Date(x.dateISO))
@@ -143,19 +136,14 @@ function getResetCountdown(quest) {
   let resetAt = null;
 
   if (frequency === "Daily") {
-    // Resets at midnight tonight
     resetAt = new Date(now);
     resetAt.setHours(24, 0, 0, 0);
-
   } else if (frequency === "Weekly") {
-    // Resets Sunday at midnight (start of next Sunday)
     resetAt = new Date(now);
     const daysUntilSunday = (7 - resetAt.getDay()) % 7 || 7;
     resetAt.setDate(resetAt.getDate() + daysUntilSunday);
     resetAt.setHours(0, 0, 0, 0);
-
   } else if (frequency === "Monthly") {
-    // Per-completion interval: 30 days / maxTimes
     const intervalDays = Math.round(30 / maxTimes);
     const lastDone = logs[0];
     if (lastDone) {
@@ -250,8 +238,7 @@ function showQuestsList(questType) {
     cardElement.appendChild(textSection);
 
     const buttonGroup = document.createElement("div");
-    buttonGroup.style.display = "flex";
-    buttonGroup.style.gap = "6px";
+    buttonGroup.className = "itemButtonGroup";
 
     if (gameState.completionLog.some(log => log.questId === q.id)) {
       const undoButton = document.createElement("button");
@@ -296,6 +283,10 @@ function showQuestsList(questType) {
 
 /* ---------- Rewards Store ---------- */
 function showRewardsList() {
+document.getElementById("shopHp").textContent = gameState.player.hpTokens || 0;
+  document.getElementById("shopGold").textContent = gameState.player.gold || 0;
+  document.getElementById("shopHc").textContent = gameState.player.hcTokens || 0;
+  document.getElementById("shopSp").textContent = gameState.player.skill || 0;
   const listContainer = document.getElementById("rewardList");
   if (!listContainer) return;
   listContainer.innerHTML = "";
@@ -326,22 +317,21 @@ function showRewardsList() {
     const subTextElement = document.createElement("div");
     subTextElement.className = "itemSubtitle";
 
-    let costMessages = [];
-    if (r.spCost > 0) costMessages.push(`${r.spCost} SP`);
-    if (r.goldCost > 0) costMessages.push(`${r.goldCost} Gold`);
-    if (r.hpCost > 0) costMessages.push(`❤️ ${r.hpCost} Life Points`);
-    if (r.hcCost > 0) costMessages.push(`🍯 ${r.hcCost} Honey`);
-    if (costMessages.length === 0) costMessages.push("Free");
+let costComponents = [];
+if (r.spCost > 0) costComponents.push(`${r.spCost} ✨`);
+if (r.goldCost > 0) costComponents.push(`${r.goldCost} 🪙`);
+if (r.hpCost > 0) costComponents.push(`${r.hpCost} ❤️`);
+if (r.hcCost > 0) costComponents.push(`${r.hcCost} 🍯`);
+if (costComponents.length === 0) costComponents.push("Free");
 
-    subTextElement.textContent = costMessages.join(" • ");
+subTextElement.innerHTML = costComponents.join(" • ");
 
     textSection.appendChild(titleElement);
     textSection.appendChild(subTextElement);
     cardElement.appendChild(textSection);
 
     const buttonGroup = document.createElement("div");
-    buttonGroup.style.display = "flex";
-    buttonGroup.style.gap = "6px";
+    buttonGroup.className = "itemButtonGroup";
 
     const buyButton = document.createElement("button");
     buyButton.className = "btn btnComplete";
@@ -663,18 +653,29 @@ function setupResetButton() {
   });
 }
 
-/* ---------- Tab & Page Control Switching ---------- */
-function setupTabs() {
-  document.querySelectorAll(".tabs .tab").forEach(tabElement => {
-    tabElement.addEventListener("click", () => {
-      document.querySelectorAll(".tabs .tab").forEach(t => t.classList.remove("active"));
-      document.querySelectorAll("main .view-panel").forEach(v => v.classList.remove("active"));
+/* ---------- Drawer Control Switching ---------- */
+function setupUIControls() {
+  const drawerRewards = document.getElementById("drawerRewardsOverlay");
+  const drawerSettings = document.getElementById("drawerSettingsOverlay");
 
-      tabElement.classList.add("active");
-      const targetView = document.getElementById(`view-${tabElement.dataset.view}`);
-      if (targetView) targetView.classList.add("active");
-    });
-  });
+  const openDrawer = (overlay) => {
+    if (!overlay) return;
+    overlay.style.display = "flex";
+    // Force a reflow so transition applies
+    void overlay.offsetWidth;
+    overlay.classList.add("open");
+  };
+
+  const closeDrawer = (overlay) => {
+    if (!overlay) return;
+    overlay.classList.remove("open");
+    setTimeout(() => { overlay.style.display = "none"; }, 300);
+  };
+
+  safeListen("btnOpenRewards", "click", () => openDrawer(drawerRewards));
+  safeListen("btnOpenSettings", "click", () => openDrawer(drawerSettings));
+  safeListen("drawerRewardsClose", "click", () => closeDrawer(drawerRewards));
+  safeListen("drawerSettingsClose", "click", () => closeDrawer(drawerSettings));
 
   safeListen("btnCreateQuest", "click", () => {
     document.getElementById("questId").value = "";
@@ -768,7 +769,6 @@ function escapeHtml(str) {
 }
 
 function setupForms() {
-  // Safe listener attachments
   safeListen("questModalClose", "click", () => closePopupBox("questModal"));
   safeListen("questModalCancel", "click", () => closePopupBox("questModal"));
   safeListen("rewardModalClose", "click", () => closePopupBox("rewardModal"));
